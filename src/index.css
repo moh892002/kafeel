@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand palette extracted from the design screenshots */
+  --color-primary: #075e66;
+  --color-primary-deep: #054b52;
+  --color-primary-dark: #04424a;
+  --color-primary-soft: #206e75;
+  --color-accent: #75bcba;
+  --color-accent-soft: #2d7f83;
+  --color-mint: #e6f2f1;
+
+  --color-surface: #fafafa;
+  --color-card: #ffffff;
+
+  --color-ink: #1c2b2c;
+  --color-ink-soft: #5b6d6e;
+  --color-ink-mute: #8fa3a4;
+
+  --color-line: #e8eeec;
+
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-card: 0 1px 2px rgba(7, 94, 102, 0.05), 0 4px 16px rgba(7, 94, 102, 0.06);
+  --shadow-pop: 0 8px 30px rgba(4, 66, 74, 0.14);
+  --radius-card: 1rem;
+
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-pop-in: pop-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in: slide-in 0.25s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html {
+  font-family: var(--font-sans);
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar to match the teal theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(7, 94, 102, 0.25);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(7, 94, 102, 0.45);
+}
