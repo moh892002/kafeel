@@ -1,4 +1,24 @@
-# كفيل — Kafeel Admin Dashboard
+<p align="center">
+  <img src="docs/kafeel-logo.svg" alt="كفيل — Kafeel logo" width="110" />
+</p>
+
+<h1 align="center">كفيل — Kafeel Admin Dashboard</h1>
+
+<p align="center">
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-075e66?style=for-the-badge&logo=react&logoColor=white" alt="React 19" /></a>
+  <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-206e75?style=for-the-badge&logo=vite&logoColor=white" alt="Vite 8" /></a>
+  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind%20CSS-4-2d7f83?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4" /></a>
+  <a href="https://reactrouter.com/"><img src="https://img.shields.io/badge/React%20Router-7-3e8e94?style=for-the-badge&logo=reactrouter&logoColor=white" alt="React Router 7" /></a>
+  <a href="https://recharts.org/"><img src="https://img.shields.io/badge/Recharts-3-5aa9a0?style=for-the-badge" alt="Recharts 3" /></a>
+  <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"><img src="https://img.shields.io/badge/JavaScript-ESM-6ab8b4?style=for-the-badge&logo=javascript&logoColor=white" alt="JavaScript (ESM)" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/RTL-%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-75bcba?style=for-the-badge" alt="RTL — العربية" />
+  <img src="https://img.shields.io/badge/UI-Arabic%20First-75bcba?style=for-the-badge" alt="Arabic-first UI" />
+</p>
+
+---
 
 A bilingual (Arabic-first, RTL) admin dashboard for **كفيل**, a counseling and mental-health services platform. It gives the platform team a single control center to manage specialists, clients, courses, sessions, earnings, and day-to-day communication.
 

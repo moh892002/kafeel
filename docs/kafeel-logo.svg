@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="كفيل — Kafeel">
+  <defs>
+    <linearGradient id="kafeel-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b7c86" />
+      <stop offset="1" stop-color="#054b52" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square in the brand teal -->
+  <rect width="256" height="256" rx="56" fill="url(#kafeel-bg)" />
+
+  <!-- Heart (care) -->
+  <path
+    fill="#ffffff"
+    d="M128 80 C 112 66 84 64 74 86 C 62 112 80 136 128 174 C 176 136 194 112 182 86 C 172 64 144 66 128 80 Z"
+  />
+
+  <!-- ECG pulse line (health) -->
+  <path
+    fill="none"
+    stroke="#e6f2f1"
+    stroke-width="9"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M86 122 h18 l10 22 l14 -40 l10 20 l4 -2 h16"
+  />
+
+  <!-- Soft highlight -->
+  <path fill="#ffffff" opacity="0.08" d="M48 48 h160 v28 a56 56 0 0 0 -56 -56 h-48 a56 56 0 0 0 -56 56 z" />
+</svg>
