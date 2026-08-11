@@ -5,7 +5,9 @@ import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
 import Icon from '../components/ui/Icon'
 import { Input, Select, Textarea } from '../components/ui/Input'
-import { SPECIALTY_OPTIONS } from '../data/specialists'
+import { EXPERIENCE_OPTIONS, QUALIFICATION_OPTIONS, SPECIALTY_OPTIONS, TITLE_OPTIONS } from '../data/specialists'
+import { options, useMeta } from '../meta'
+import { api } from '../api'
 
 const STEPS = [
   { id: 1, title: 'البيانات الشخصية', desc: 'المعلومات الأساسية عن الأخصائي', icon: 'user' },
@@ -14,11 +16,7 @@ const STEPS = [
   { id: 4, title: 'المستندات والمراجعة', desc: 'رفع المستندات ومراجعة الطلب', icon: 'clipboard' },
 ]
 
-const TITLE_OPTIONS = ['د.', 'أ.']
 const GENDER_OPTIONS = ['ذكر', 'أنثى']
-const EXPERIENCE_OPTIONS = ['أقل من سنة', '1 - 3 سنوات', '3 - 5 سنوات', '5 - 10 سنوات', 'أكثر من 10 سنوات']
-const QUALIFICATION_OPTIONS = ['بكالوريوس', 'ماجستير', 'دكتوراه', 'زمالة']
-const SESSION_TYPE_OPTIONS = ['جلسة استشارية', 'جلسة مكثفة', 'لقاء مرئي']
 const DURATION_OPTIONS = ['30 دقيقة', '45 دقيقة', '60 دقيقة', '90 دقيقة']
 const DAY_OPTIONS = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
 
@@ -87,9 +85,40 @@ function PillGroup({ options, value, onToggle, cols }) {
 
 export default function AddSpecialist() {
   const navigate = useNavigate()
+  const meta = useMeta()
+  const sessionTypeNames = options(meta, 'sessionType')
   const [step, setStep] = useState(0)
   const [form, setForm] = useState(initialForm)
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  /* Maps the wizard fields onto the API's SpecialistRequest payload */
+  const buildPayload = () => ({
+    title: form.title,
+    name: form.fullName.trim(),
+    specialty: form.specialty,
+    fee: Number(form.fee) || 0,
+    email: form.email.trim(),
+    phone: form.phone.trim(),
+    bio: form.bio.trim() || null,
+    yearsExperience: form.years,
+    qualification: form.qualification,
+  })
+
+  const submit = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await api.createSpecialist(buildPayload())
+      setSubmitted(true)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
@@ -156,6 +185,23 @@ export default function AddSpecialist() {
         </div>
         <Badge tone="teal" dot>نموذج من 4 خطوات</Badge>
       </div>
+
+      {/* Submit error */}
+      {error && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
+          <span className="flex items-center gap-2">
+            <Icon name="x" size={16} strokeWidth={2.4} />
+            {error}
+          </span>
+          <button
+            onClick={() => setError(null)}
+            aria-label="إغلاق"
+            className="grid size-6 place-items-center rounded-md transition-colors hover:bg-red-100"
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Stepper */}
       <Card className="px-5 py-4">
@@ -259,7 +305,11 @@ export default function AddSpecialist() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="mb-1.5 text-sm font-semibold text-ink">أنواع الجلسات *</p>
-                <PillGroup options={SESSION_TYPE_OPTIONS} value={form.sessionTypes} onToggle={toggle('sessionTypes')} />
+                {meta ? (
+                  <PillGroup options={sessionTypeNames} value={form.sessionTypes} onToggle={toggle('sessionTypes')} />
+                ) : (
+                  <p className="text-xs font-semibold text-ink-mute">جارٍ تحميل أنواع الجلسات...</p>
+                )}
               </div>
               <Input id="sp-fee" label="رسوم الجلسة (ر.س) *" type="number" min="0" placeholder="350" value={form.fee} onChange={set('fee')} />
               <Select id="sp-duration" label="مدة الجلسة" value={form.duration} onChange={set('duration')}>
@@ -323,8 +373,18 @@ export default function AddSpecialist() {
                 متابعة
               </Button>
             ) : (
-              <Button onClick={() => setSubmitted(true)} disabled={!stepValid} icon={<Icon name="send" size={16} />}>
-                إرسال الطلب
+              <Button
+                onClick={submit}
+                disabled={!stepValid || submitting}
+                icon={
+                  submitting ? (
+                    <Icon name="loader" size={16} className="animate-spin" />
+                  ) : (
+                    <Icon name="send" size={16} />
+                  )
+                }
+              >
+                {submitting ? 'جارٍ الإرسال...' : 'إرسال الطلب'}
               </Button>
             )}
           </div>

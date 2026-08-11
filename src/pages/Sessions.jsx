@@ -7,19 +7,9 @@ import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import { Input, Select, Textarea } from '../components/ui/Input'
-import { SPECIALISTS } from '../data/specialists'
-import {
-  CLIENT_OPTIONS,
-  feeFor,
-  loadSessions,
-  localDateStr,
-  nextSessionId,
-  PAYMENT_METHODS,
-  persistSessions,
-  SESSION_STATUSES,
-  SESSION_TYPES,
-} from '../data/sessions'
-import { fmtDate, num } from '../utils/format'
+import { api } from '../api'
+import { allFilter, feeFor, options, sessionTypes, useMeta } from '../meta'
+import { fmtDate, localDateStr, num } from '../utils/format'
 
 const PAGE_SIZE = 8
 
@@ -68,6 +58,7 @@ function buildMonthGrid(y, m) {
 
 /* ---------- Calendar view ---------- */
 function CalendarView({ sessions, onSessionClick }) {
+  const meta = useMeta()
   const now = new Date()
   const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() })
   const [selected, setSelected] = useState(localDateStr(now))
@@ -125,7 +116,7 @@ function CalendarView({ sessions, onSessionClick }) {
 
       {/* Legend */}
       <div className="flex flex-wrap gap-x-5 gap-y-1.5 border-b border-line px-5 py-2.5">
-        {SESSION_STATUSES.slice(1).map((s) => (
+        {allFilter(options(meta, 'sessionStatus')).slice(1).map((s) => (
           <span key={s} className="inline-flex items-center gap-1.5 text-[11px] font-bold text-ink-mute">
             <span className={`size-2.5 rounded-full ${DOT[s]}`} />
             {s}
@@ -350,28 +341,31 @@ function SessionDetailsModal({ session, onClose, onUpdate }) {
 }
 
 /* ---------- Booking (new session) modal ---------- */
-function BookingModal({ onClose, onSave }) {
+function BookingModal({ specialists, clients, onClose, onSaved }) {
+  const meta = useMeta()
   const [form, setForm] = useState({
-    specialistId: SPECIALISTS[0].id,
-    client: CLIENT_OPTIONS[0],
-    type: SESSION_TYPES[0].name,
+    specialistId: specialists[0]?.id ?? '',
+    clientId: clients[0]?.id ?? '',
+    type: sessionTypes(meta)[0]?.name ?? '',
     date: '',
     time: '16:00',
-    payment: PAYMENT_METHODS[0],
+    payment: options(meta, 'paymentMethod')[0] ?? '',
     note: '',
   })
   const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
   const todayStr = localDateStr(new Date())
 
-  const specialist = SPECIALISTS.find((x) => x.id === form.specialistId) ?? SPECIALISTS[0]
-  const fee = feeFor(specialist.fee, form.type)
+  const specialist = specialists.find((x) => x.id === Number(form.specialistId)) ?? specialists[0]
+  const client = clients.find((x) => x.id === Number(form.clientId)) ?? clients[0]
+  const fee = specialist ? feeFor(Number(specialist.fee), form.type) : 0
 
   const set = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
     setError(null)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.date || !form.time) {
       setError('يرجى اختيار تاريخ ووقت الجلسة')
       return
@@ -380,22 +374,27 @@ function BookingModal({ onClose, onSave }) {
       setError('لا يمكن حجز جلسة في تاريخ سابق')
       return
     }
-    onSave({
-      client: form.client,
-      specialistId: specialist.id,
-      specialistName: specialist.name,
-      specialistTitle: specialist.title,
-      specialty: specialist.specialty,
-      type: form.type,
-      date: form.date,
-      time: form.time,
-      datetime: new Date(`${form.date}T${form.time}`).toISOString(),
-      fee,
-      payment: form.payment,
-      location: 'عن بُعد (فيديو)',
-      status: 'محجوزة',
-      note: form.note.trim(),
-    })
+    if (!form.specialistId || !form.clientId) {
+      setError('يرجى اختيار الأخصائي والعميل')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const created = await api.createSession({
+        clientName: client.name,
+        clientId: client.id,
+        specialistId: Number(form.specialistId),
+        type: form.type,
+        date: form.date,
+        time: form.time,
+        payment: form.payment,
+        note: form.note.trim() || null,
+      })
+      onSaved(created)
+    } catch (e) {
+      setError(e.message)
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -410,8 +409,8 @@ function BookingModal({ onClose, onSave }) {
           <Button variant="ghost" onClick={onClose}>
             إلغاء
           </Button>
-          <Button icon={<Icon name="calendar" size={16} />} onClick={save}>
-            تأكيد الحجز
+          <Button icon={<Icon name="calendar" size={16} />} onClick={save} disabled={submitting}>
+            {submitting ? 'جارٍ الحجز...' : 'تأكيد الحجز'}
           </Button>
         </>
       }
@@ -425,28 +424,28 @@ function BookingModal({ onClose, onSave }) {
         )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select label="الأخصائي" id="booking-specialist" icon="user-check" value={form.specialistId} onChange={set('specialistId')}>
-            {SPECIALISTS.map((x) => (
+            {specialists.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.title} {x.name} — {x.specialty}
               </option>
             ))}
           </Select>
-          <Select label="العميل" id="booking-client" icon="users" value={form.client} onChange={set('client')}>
-            {CLIENT_OPTIONS.map((c) => (
-              <option key={c} value={c}>
-                {c}
+          <Select label="العميل" id="booking-client" icon="users" value={form.clientId} onChange={set('clientId')}>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </Select>
           <Select label="نوع الجلسة" id="booking-type" icon="video" value={form.type} onChange={set('type')}>
-            {SESSION_TYPES.map((t) => (
+            {sessionTypes(meta).map((t) => (
               <option key={t.name} value={t.name}>
                 {t.name}
               </option>
             ))}
           </Select>
           <Select label="وسيلة الدفع" id="booking-payment" icon="banknote" value={form.payment} onChange={set('payment')}>
-            {PAYMENT_METHODS.map((p) => (
+            {options(meta, 'paymentMethod').map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
@@ -476,7 +475,12 @@ function BookingModal({ onClose, onSave }) {
 
 /* ---------- Page ---------- */
 export default function Sessions() {
-  const [sessions, setSessions] = useState(loadSessions)
+  const meta = useMeta()
+  const [sessions, setSessions] = useState([])
+  const [specialists, setSpecialists] = useState([])
+  const [clients, setClients] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('الكل')
   const [type, setType] = useState('الكل')
@@ -486,6 +490,8 @@ export default function Sessions() {
   const [details, setDetails] = useState(null)
   const [bookingOpen, setBookingOpen] = useState(false)
   const [notice, setNotice] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!notice) return undefined
@@ -493,21 +499,48 @@ export default function Sessions() {
     return () => clearTimeout(t)
   }, [notice])
 
-  const updateList = (updater) => {
-    setSessions((prev) => {
-      const next = updater(prev)
-      persistSessions(next)
-      return next
-    })
-  }
+  // Flatten the embedded specialist so the existing views keep working.
+  const mapRow = (s) => ({
+    ...s,
+    specialistTitle: s.specialist?.title ?? '',
+    specialistName: s.specialist?.name ?? '',
+    specialty: s.specialist?.specialty ?? '',
+  })
 
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [s, sp, cl] = await Promise.all([api.sessions(), api.specialists(), api.clients()])
+        if (cancelled) return
+        setSessions((s ?? []).map(mapRow))
+        setSpecialists(sp ?? [])
+        setClients(cl ?? [])
+        setLoading(false)
+      } catch (e) {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const statuses = allFilter(options(meta, 'sessionStatus'))
   const counts = useMemo(() => {
-    const c = { 'الكل': sessions.length, محجوزة: 0, مكتملة: 0, ملغاة: 0, 'قيد الانتظار': 0 }
+    const c = { 'الكل': sessions.length }
+    statuses.forEach((s) => {
+      if (s !== 'الكل') c[s] = 0
+    })
     sessions.forEach((x) => {
-      c[x.status] += 1
+      c[x.status] = (c[x.status] ?? 0) + 1
     })
     return c
-  }, [sessions])
+  }, [sessions, statuses])
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -535,18 +568,39 @@ export default function Sessions() {
   const safePage = Math.min(page, pageCount)
   const paged = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  const handleUpdateStatus = (next) => {
+  const handleUpdateStatus = async (next) => {
     const label =
       next.status === 'مكتملة' ? 'تم تأكيد حضور الجلسة' : next.status === 'محجوزة' ? 'تم تأكيد الحجز' : 'تم إلغاء الجلسة'
-    updateList((prev) => prev.map((x) => (x.id === next.id ? next : x)))
-    setDetails(null)
-    setNotice(`${label} ✓`)
+    try {
+      await api.updateSessionStatus(next.id, next.status)
+      setSessions((prev) => prev.map((x) => (x.id === next.id ? { ...x, status: next.status } : x)))
+      setDetails(null)
+      setNotice({ text: `${label} ✓`, tone: 'success' })
+    } catch (e) {
+      setNotice({ text: e.message, tone: 'error' })
+    }
   }
 
-  const handleBooking = (s) => {
-    updateList((prev) => [...prev, { ...s, id: nextSessionId(prev) }])
+  const handleBooking = (created) => {
+    setSessions((prev) => [...prev, mapRow(created)].sort((a, b) => (a.datetime < b.datetime ? -1 : 1)))
     setBookingOpen(false)
-    setNotice('تم حجز الجلسة بنجاح ✓')
+    setNotice({ text: 'تم حجز الجلسة بنجاح ✓', tone: 'success' })
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteSession(deleteTarget.id)
+      setSessions((prev) => prev.filter((x) => x.id !== deleteTarget.id))
+      if (details?.id === deleteTarget.id) setDetails(null)
+      setNotice({ text: `تم حذف جلسة «${deleteTarget.client}» بنجاح`, tone: 'success' })
+      setDeleteTarget(null)
+    } catch (e) {
+      setNotice({ text: e.message, tone: 'error' })
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const exportCsv = () => {
@@ -563,13 +617,39 @@ export default function Sessions() {
     a.download = 'sessions.csv'
     a.click()
     URL.revokeObjectURL(url)
-    setNotice('تم تصدير الملف بنجاح ✓')
+    setNotice({ text: 'تم تصدير الملف بنجاح ✓', tone: 'success' })
   }
 
   const viewBtn = (active) =>
     `inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-bold transition-all ${
       active ? 'bg-white text-primary shadow-card' : 'text-ink-mute hover:text-primary'
     }`
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الجلسات</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل الجلسات...
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -586,10 +666,16 @@ export default function Sessions() {
 
       {/* Notice */}
       {notice && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent-soft/30 bg-mint px-4 py-3 text-sm font-bold text-primary animate-slide-in">
+        <div
+          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-600'
+              : 'border-accent-soft/30 bg-mint text-primary'
+          }`}
+        >
           <span className="flex items-center gap-2">
-            <Icon name="check" size={16} strokeWidth={2.4} />
-            {notice}
+            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
+            {notice.text}
           </span>
           <button
             onClick={() => setNotice(null)}
@@ -603,7 +689,7 @@ export default function Sessions() {
 
       {/* Stat strip — status filters */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {SESSION_STATUSES.map((s) => (
+        {statuses.map((s) => (
           <button
             key={s}
             onClick={() => {
@@ -643,7 +729,7 @@ export default function Sessions() {
 
           <Select className="w-44" value={type} onChange={(e) => { setType(e.target.value); setPage(1) }}>
             <option value="الكل">كل الأنواع</option>
-            {SESSION_TYPES.map((t) => (
+            {sessionTypes(meta).map((t) => (
               <option key={t.name} value={t.name}>
                 {t.name}
               </option>
@@ -758,6 +844,13 @@ export default function Sessions() {
                         >
                           <Icon name="eye" size={17} />
                         </button>
+                        <button
+                          title="حذف الجلسة"
+                          className="grid size-8 place-items-center rounded-lg text-ink-mute transition-colors hover:bg-red-50 hover:text-red-500"
+                          onClick={() => setDeleteTarget(s)}
+                        >
+                          <Icon name="trash" size={17} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -771,7 +864,43 @@ export default function Sessions() {
 
       {/* Modals */}
       {details && <SessionDetailsModal session={details} onClose={() => setDetails(null)} onUpdate={handleUpdateStatus} />}
-      {bookingOpen && <BookingModal onClose={() => setBookingOpen(false)} onSave={handleBooking} />}
+      {bookingOpen && (
+        <BookingModal
+          specialists={specialists}
+          clients={clients}
+          onClose={() => setBookingOpen(false)}
+          onSaved={handleBooking}
+        />
+      )}
+
+      {/* Delete confirm */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="حذف الجلسة"
+        subtitle="لا يمكن التراجع عن هذا الإجراء"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+              إلغاء
+            </Button>
+            <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex items-start gap-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
+            <Icon name="trash" size={20} />
+          </span>
+          <p className="text-sm leading-relaxed text-ink-soft">
+            هل أنت متأكد من حذف جلسة <span className="font-extrabold text-ink">«{deleteTarget?.client}»</span>؟
+            سيتم حذف الجلسة وجميع بياناتها نهائياً.
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }

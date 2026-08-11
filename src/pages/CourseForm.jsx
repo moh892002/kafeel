@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
@@ -6,13 +6,12 @@ import Badge from '../components/ui/Badge'
 import Icon from '../components/ui/Icon'
 import CourseCover from '../components/ui/CourseCover'
 import { Input, Select, Textarea } from '../components/ui/Input'
-import { findCourse, upsertCourse, nextCourseId, buildLessons, CATEGORIES, LEVELS, COURSE_STATUSES, COVERS } from '../data/courses'
-import { SPECIALISTS } from '../data/specialists'
-
-const INSTRUCTORS = [...new Set(SPECIALISTS.map((s) => `${s.title} ${s.name}`))].slice(0, 12)
+import { api } from '../api'
+import { CATEGORIES, COVERS } from '../data/courses'
+import { options, useMeta } from '../meta'
 
 const emptyForm = {
-  title: '', category: '', level: 'مبتدئ', instructor: '', price: '', sessions: '4',
+  title: '', category: '', level: 'مبتدئ', instructorId: '', price: '', sessions: '4',
   hours: '6', status: 'مسودة', description: '', cover: COVERS[0],
 }
 
@@ -39,69 +38,113 @@ function PillGroup({ options, value, onPick }) {
 
 export default function CourseForm() {
   const { id } = useParams()
+  const meta = useMeta()
   const navigate = useNavigate()
   const isEdit = id !== undefined
 
-  const editing = useMemo(() => (isEdit ? findCourse(id) : null), [isEdit, id])
-
-  const [form, setForm] = useState(() =>
-    editing
-      ? {
-          title: editing.title,
-          category: editing.category,
-          level: editing.level,
-          instructor: editing.instructor,
-          price: String(editing.price),
-          sessions: String(editing.sessions),
-          hours: String(editing.hours),
-          status: editing.status,
-          description: editing.description,
-          cover: editing.cover,
-        }
-      : emptyForm,
-  )
+  const [specialists, setSpecialists] = useState([])
+  const [form, setForm] = useState(emptyForm)
   const [savedId, setSavedId] = useState(null)
+  const [loading, setLoading] = useState(isEdit)
+  const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [notFound, setNotFound] = useState(false)
+
+  // Instructor list for the dropdown (live, so ids match the API).
+  useEffect(() => {
+    let cancelled = false
+    api.specialists()
+      .then((list) => {
+        if (!cancelled) setSpecialists(list ?? [])
+      })
+      .catch(() => {
+        /* dropdown is empty — submit will surface the error */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Edit mode: prefill from the live course.
+  useEffect(() => {
+    if (!isEdit) return undefined
+    let cancelled = false
+    api.course(id)
+      .then((c) => {
+        if (cancelled) return
+        setForm({
+          title: c.title,
+          category: c.category,
+          level: c.level,
+          instructorId: String(c.instructor?.id ?? ''),
+          price: String(c.price ?? 0),
+          sessions: String(c.sessions ?? 4),
+          hours: String(c.hours ?? 6),
+          status: c.status,
+          description: c.description ?? '',
+          cover: c.cover ?? COVERS[0],
+        })
+        setLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setNotFound(e.status === 404)
+        setError(e.message)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isEdit, id])
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
   const pick = (key) => (value) => setForm((f) => ({ ...f, [key]: value }))
 
-  const valid = useMemo(
-    () =>
-      form.title.trim() !== '' &&
-      form.category !== '' &&
-      form.instructor !== '' &&
-      String(form.price).trim() !== '',
-    [form],
-  )
+  const valid =
+    form.title.trim() !== '' &&
+    form.category !== '' &&
+    form.instructorId !== '' &&
+    String(form.price).trim() !== ''
 
-  const save = () => {
-    if (!valid) return
-    const newId = editing ? editing.id : nextCourseId()
+  const save = async () => {
+    if (!valid || submitting) return
+    setSubmitting(true)
+    setError(null)
     const payload = {
-      ...(editing ?? {}),
-      id: newId,
       title: form.title.trim(),
       category: form.category,
       level: form.level,
-      instructor: form.instructor,
+      instructorId: Number(form.instructorId),
       price: Number(form.price) || 0,
       sessions: Number(form.sessions) || 4,
       hours: Number(form.hours) || 6,
       status: form.status,
-      description: form.description.trim(),
       cover: form.cover,
-      createdAt: editing?.createdAt ?? new Date().toISOString().slice(0, 10),
-      enrolled: editing?.enrolled ?? 0,
-      capacity: editing?.capacity ?? 100,
-      rating: editing?.rating ?? 0,
-      lessons: editing?.lessons ?? buildLessons(newId),
+      description: form.description.trim() || null,
     }
-    upsertCourse(payload)
-    setSavedId(payload.id)
+    try {
+      const result = isEdit ? await api.updateCourse(id, payload) : await api.createCourse(payload)
+      setSavedId(result.id)
+    } catch (e) {
+      setError(e.message)
+      setSubmitting(false)
+    }
+  }
+
+  /* ---------- Loading ---------- */
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل بيانات الدورة...
+        </div>
+      </div>
+    )
   }
 
   /* ---------- Not found ---------- */
-  if (isEdit && !editing) {
+  if (isEdit && notFound) {
     return (
       <Card className="flex flex-col items-center px-6 py-24 text-center">
         <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
@@ -111,6 +154,22 @@ export default function CourseForm() {
         <p className="mt-2 max-w-md text-sm text-ink-soft">لم نتمكن من العثور على هذه الدورة، قد تكون محذوفة.</p>
         <Button variant="outline" className="mt-6" icon={<Icon name="chevron-right" size={16} />} onClick={() => navigate('/courses')}>
           العودة لقائمة الدورات
+        </Button>
+      </Card>
+    )
+  }
+
+  /* ---------- Error ---------- */
+  if (isEdit && error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الدورة</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
         </Button>
       </Card>
     )
@@ -159,6 +218,12 @@ export default function CourseForm() {
 
       <Card>
         <div className="grid gap-5 px-6 py-6 sm:grid-cols-2">
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 sm:col-span-2 animate-slide-in">
+              <Icon name="x" size={16} strokeWidth={2.4} />
+              {error}
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Input id="c-title" label="عنوان الدورة *" placeholder="مثال: دورة المهارات الأسرية المتقدمة" value={form.title} onChange={set('title')} />
           </div>
@@ -166,20 +231,22 @@ export default function CourseForm() {
             <option value="">اختر الفئة...</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
-          <Select id="c-instructor" label="المدرب *" value={form.instructor} onChange={set('instructor')}>
+          <Select id="c-instructor" label="المدرب *" value={form.instructorId} onChange={set('instructorId')}>
             <option value="">اختر المدرب...</option>
-            {INSTRUCTORS.map((i) => <option key={i} value={i}>{i}</option>)}
+            {specialists.map((s) => (
+              <option key={s.id} value={s.id}>{s.title} {s.name} — {s.specialty}</option>
+            ))}
           </Select>
           <div>
             <p className="mb-1.5 text-sm font-semibold text-ink">المستوى</p>
-            <PillGroup options={LEVELS} value={form.level} onPick={pick('level')} />
+            <PillGroup options={options(meta, 'courseLevel')} value={form.level} onPick={pick('level')} />
           </div>
           <Input id="c-price" label="السعر (ر.س) *" type="number" min="0" placeholder="0 = مجانية" value={form.price} onChange={set('price')} />
           <Input id="c-sessions" label="عدد الجلسات" type="number" min="1" value={form.sessions} onChange={set('sessions')} />
           <Input id="c-hours" label="المدة الإجمالية (ساعات)" type="number" min="1" value={form.hours} onChange={set('hours')} />
           <div>
             <p className="mb-1.5 text-sm font-semibold text-ink">الحالة</p>
-            <PillGroup options={COURSE_STATUSES} value={form.status} onPick={pick('status')} />
+            <PillGroup options={options(meta, 'courseStatus')} value={form.status} onPick={pick('status')} />
           </div>
 
           <div className="sm:col-span-2">
@@ -212,8 +279,8 @@ export default function CourseForm() {
           <p className="text-xs text-ink-mute">الحقول المميزة بـ <span className="font-extrabold text-primary">*</span> مطلوبة</p>
           <div className="flex items-center gap-2.5">
             <Button variant="ghost" onClick={() => navigate('/courses')}>إلغاء</Button>
-            <Button onClick={save} disabled={!valid} icon={<Icon name="check" size={16} strokeWidth={2.4} />}>
-              {isEdit ? 'حفظ التعديلات' : 'إنشاء الدورة'}
+            <Button onClick={save} disabled={!valid || submitting} icon={<Icon name="check" size={16} strokeWidth={2.4} />}>
+              {submitting ? 'جارٍ الحفظ...' : isEdit ? 'حفظ التعديلات' : 'إنشاء الدورة'}
             </Button>
           </div>
         </div>

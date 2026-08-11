@@ -6,13 +6,14 @@ import Avatar from '../components/ui/Avatar'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import { Input, Select } from '../components/ui/Input'
-import { SPECIALISTS } from '../data/specialists'
-import { MEETINGS, MEETING_TYPES, MEETING_STATUSES } from '../data/meetings'
+import { api } from '../api'
+import { allFilter, options, statusChoices, useMeta } from '../meta'
 import { fmtDate, num } from '../utils/format'
 
 const STATUS_TONE = { مجدول: 'teal', منعقد: 'success', منتهي: 'neutral', ملغي: 'danger' }
 
 const fmtTime = (t) => {
+  if (!t) return ''
   const [h, m] = t.split(':').map(Number)
   const h12 = h % 12 || 12
   return `${h12}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`
@@ -21,7 +22,7 @@ const fmtTime = (t) => {
 /* ---------- Details modal ---------- */
 function MeetingDetailsModal({ meeting, onClose, onJoin }) {
   const m = meeting
-  const pct = Math.round((m.attendees / m.capacity) * 100)
+  const pct = Math.round((m.attendees / Math.max(1, m.capacity)) * 100)
   const actionable = m.status === 'مجدول' || m.status === 'منعقد'
 
   return (
@@ -58,12 +59,12 @@ function MeetingDetailsModal({ meeting, onClose, onJoin }) {
         </div>
 
         <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3">
-          <Avatar name={m.host.name} size={40} />
+          <Avatar name={m.host?.name ?? '—'} size={40} />
           <div>
             <p className="text-sm font-bold text-ink">
-              {m.host.title} {m.host.name}
+              {m.host?.title ?? ''} {m.host?.name ?? '—'}
             </p>
-            <p className="text-xs text-ink-mute">{m.host.specialty}</p>
+            <p className="text-xs text-ink-mute">{m.host?.specialty ?? ''}</p>
           </div>
         </div>
 
@@ -102,7 +103,7 @@ function MeetingDetailsModal({ meeting, onClose, onJoin }) {
         <div className="flex items-center gap-2.5 rounded-xl border border-line bg-white px-4 py-3">
           <Icon name="link" size={16} className="text-primary" />
           <span className="text-sm font-semibold text-ink-soft" dir="ltr">
-            {m.link}
+            {m.link ?? 'يُرسل رابط اللقاء عند بدئه'}
           </span>
         </div>
       </div>
@@ -111,23 +112,25 @@ function MeetingDetailsModal({ meeting, onClose, onJoin }) {
 }
 
 /* ---------- Schedule modal ---------- */
-function ScheduleModal({ onClose, onSave }) {
+function ScheduleModal({ specialists, onClose, onSaved }) {
+  const meta = useMeta()
   const [form, setForm] = useState({
     title: '',
-    type: MEETING_TYPES[0],
-    hostId: SPECIALISTS[0].id,
+    type: options(meta, 'meetingType')[0] ?? '',
+    hostId: specialists[0]?.id ?? '',
     date: '',
     time: '19:00',
     duration: 60,
   })
   const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const set = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
     setError(null)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.title.trim()) {
       setError('يرجى إدخال عنوان اللقاء')
       return
@@ -136,7 +139,25 @@ function ScheduleModal({ onClose, onSave }) {
       setError('يرجى اختيار تاريخ اللقاء')
       return
     }
-    onSave({ ...form, title: form.title.trim() })
+    if (!form.hostId) {
+      setError('يرجى اختيار مقدم اللقاء')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const created = await api.createMeeting({
+        title: form.title.trim(),
+        type: form.type,
+        hostId: Number(form.hostId),
+        date: form.date,
+        time: form.time,
+        duration: Number(form.duration),
+      })
+      onSaved(created)
+    } catch (e) {
+      setError(e.message)
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -151,8 +172,8 @@ function ScheduleModal({ onClose, onSave }) {
           <Button variant="ghost" onClick={onClose}>
             إلغاء
           </Button>
-          <Button icon={<Icon name="calendar" size={16} />} onClick={save}>
-            جدولة اللقاء
+          <Button icon={<Icon name="calendar" size={16} />} onClick={save} disabled={submitting}>
+            {submitting ? 'جارٍ الجدولة...' : 'جدولة اللقاء'}
           </Button>
         </>
       }
@@ -167,14 +188,14 @@ function ScheduleModal({ onClose, onSave }) {
         <Input label="عنوان اللقاء" id="mt-title" placeholder="مثال: ورشة إدارة الضغوط" value={form.title} onChange={set('title')} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select label="نوع اللقاء" id="mt-type" icon="video" value={form.type} onChange={set('type')}>
-            {MEETING_TYPES.map((t) => (
+            {options(meta, 'meetingType').map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
             ))}
           </Select>
           <Select label="مقدم اللقاء" id="mt-host" icon="user-check" value={form.hostId} onChange={set('hostId')}>
-            {SPECIALISTS.map((s) => (
+            {specialists.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title} {s.name}
               </option>
@@ -197,13 +218,20 @@ function ScheduleModal({ onClose, onSave }) {
 
 /* ---------- Page ---------- */
 export default function Meetings() {
-  const [meetings, setMeetings] = useState(MEETINGS)
+  const meta = useMeta()
+  const [meetings, setMeetings] = useState([])
+  const [specialists, setSpecialists] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('الكل')
   const [type, setType] = useState('الكل')
   const [details, setDetails] = useState(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [notice, setNotice] = useState(null)
+  const [statusBusy, setStatusBusy] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!notice) return undefined
@@ -211,46 +239,118 @@ export default function Meetings() {
     return () => clearTimeout(t)
   }, [notice])
 
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [m, sp] = await Promise.all([api.meetings(), api.specialists()])
+        if (cancelled) return
+        setMeetings(m ?? [])
+        setSpecialists(sp ?? [])
+        setLoading(false)
+      } catch (e) {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const statuses = allFilter(options(meta, 'meetingStatus'))
   const counts = useMemo(() => {
-    const c = { الكل: meetings.length, مجدول: 0, منعقد: 0, منتهي: 0, ملغي: 0 }
+    const c = { الكل: meetings.length }
+    statuses.forEach((s) => {
+      if (s !== 'الكل') c[s] = 0
+    })
     meetings.forEach((x) => {
-      c[x.status] += 1
+      c[x.status] = (c[x.status] ?? 0) + 1
     })
     return c
-  }, [meetings])
+  }, [meetings, statuses])
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     return meetings.filter((m) => {
       if (status !== 'الكل' && m.status !== status) return false
       if (type !== 'الكل' && m.type !== type) return false
-      if (q && !`${m.title} ${m.host.name} ${m.type}`.toLowerCase().includes(q)) return false
+      if (q && !`${m.title} ${m.host?.name ?? ''} ${m.type}`.toLowerCase().includes(q)) return false
       return true
     })
   }, [meetings, search, status, type])
 
   const join = (m) => {
     setDetails(null)
-    setNotice(m.recording && m.status === 'منتهي' ? 'سيتم فتح تسجيل اللقاء في نافذة جديدة ✓' : 'سيتم نقلك إلى غرفة اللقاء ✓')
+    setNotice(
+      m.recording && m.status === 'منتهي'
+        ? { text: 'سيتم فتح تسجيل اللقاء في نافذة جديدة ✓', tone: 'success' }
+        : { text: 'سيتم نقلك إلى غرفة اللقاء ✓', tone: 'success' },
+    )
   }
 
-  const schedule = (data) => {
-    const host = SPECIALISTS.find((s) => s.id === Number(data.hostId)) ?? SPECIALISTS[0]
-    setMeetings((prev) => [
-      {
-        id: prev.reduce((m, x) => Math.max(m, x.id), 0) + 1,
-        ...data,
-        host,
-        attendees: 0,
-        capacity: 60,
-        status: 'مجدول',
-        recording: false,
-        link: `meet.kafeel.sa/room-new-${prev.length + 1}`,
-      },
-      ...prev,
-    ])
+  const schedule = (created) => {
+    setMeetings((prev) => [created, ...prev])
     setScheduleOpen(false)
-    setNotice('تم جدولة اللقاء بنجاح ✓')
+    setNotice({ text: 'تم جدولة اللقاء بنجاح ✓', tone: 'success' })
+  }
+
+  const changeStatus = async (m, next) => {
+    if (next === m.status) return
+    setStatusBusy(m.id)
+    try {
+      await api.updateMeetingStatus(m.id, next)
+      setMeetings((prev) => prev.map((x) => (x.id === m.id ? { ...x, status: next } : x)))
+      setNotice({ text: `تم تحديث حالة اللقاء «${m.title}» إلى ${next} ✓`, tone: 'success' })
+    } catch (e) {
+      setNotice({ text: e.message, tone: 'error' })
+    } finally {
+      setStatusBusy(null)
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteMeeting(deleteTarget.id)
+      setMeetings((prev) => prev.filter((x) => x.id !== deleteTarget.id))
+      if (details?.id === deleteTarget.id) setDetails(null)
+      setNotice({ text: `تم حذف اللقاء «${deleteTarget.title}» بنجاح`, tone: 'success' })
+      setDeleteTarget(null)
+    } catch (e) {
+      setNotice({ text: e.message, tone: 'error' })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل اللقاءات</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل اللقاءات...
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -268,10 +368,16 @@ export default function Meetings() {
 
       {/* Notice */}
       {notice && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent-soft/30 bg-mint px-4 py-3 text-sm font-bold text-primary animate-slide-in">
+        <div
+          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-600'
+              : 'border-accent-soft/30 bg-mint text-primary'
+          }`}
+        >
           <span className="flex items-center gap-2">
-            <Icon name="check" size={16} strokeWidth={2.4} />
-            {notice}
+            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
+            {notice.text}
           </span>
           <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
             <Icon name="x" size={14} />
@@ -281,7 +387,7 @@ export default function Meetings() {
 
       {/* Stat strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {MEETING_STATUSES.map((s) => (
+        {statuses.map((s) => (
           <button
             key={s}
             onClick={() => setStatus(s)}
@@ -291,7 +397,7 @@ export default function Meetings() {
           >
             <p className={`text-2xl font-extrabold ${status === s ? 'text-white' : 'text-ink'}`}>{num(counts[s])}</p>
             <p className={`text-xs font-semibold ${status === s ? 'text-white/70' : 'text-ink-mute'}`}>
-              {s === 'الكل' ? 'إجمالي اللقاءات' : s === 'مجدول' ? 'لقاء مجدول' : s === 'منعقد' ? 'لقاء منعقد الآن' : s === 'منتهي' ? 'لقاء منتهي' : 'لقاء ملغي'}
+              {s === 'الكل' ? 'إجمالي اللقاءات' : s}
             </p>
           </button>
         ))}
@@ -310,7 +416,7 @@ export default function Meetings() {
           </div>
           <Select className="w-44" value={type} onChange={(e) => setType(e.target.value)}>
             <option value="الكل">كل الأنواع</option>
-            {MEETING_TYPES.map((t) => (
+            {options(meta, 'meetingType').map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -353,7 +459,7 @@ export default function Meetings() {
                         )}
                       </p>
                       <p className="mt-0.5 text-xs text-ink-mute">
-                        {m.host.title} {m.host.name} · {m.type}
+                        {m.host?.title ?? ''} {m.host?.name ?? ''} · {m.type}
                       </p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-soft">
                         <span className="flex items-center gap-1">
@@ -372,9 +478,18 @@ export default function Meetings() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2.5">
-                    <Badge tone={STATUS_TONE[m.status]} dot>
-                      {m.status}
-                    </Badge>
+                    <Select
+                      className="w-32"
+                      value={m.status}
+                      disabled={statusBusy === m.id}
+                      onChange={(e) => changeStatus(m, e.target.value)}
+                    >
+                      {statusChoices(meta, 'meetingStatus', m.status).map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
                     {(m.status === 'مجدول' || m.status === 'منعقد') && (
                       <Button size="sm" variant={live ? 'primary' : 'soft'} icon={<Icon name="video" size={15} />} onClick={() => join(m)}>
                         {live ? 'انضم الآن' : 'دخول'}
@@ -387,6 +502,13 @@ export default function Meetings() {
                     >
                       <Icon name="eye" size={17} />
                     </button>
+                    <button
+                      title="حذف اللقاء"
+                      onClick={() => setDeleteTarget(m)}
+                      className="grid size-9 place-items-center rounded-xl border border-line bg-white text-ink-mute transition-colors hover:bg-red-50 hover:text-red-500"
+                    >
+                      <Icon name="trash" size={16} />
+                    </button>
                   </div>
                 </li>
               )
@@ -397,7 +519,42 @@ export default function Meetings() {
 
       {/* Modals */}
       {details && <MeetingDetailsModal meeting={details} onClose={() => setDetails(null)} onJoin={join} />}
-      {scheduleOpen && <ScheduleModal onClose={() => setScheduleOpen(false)} onSave={schedule} />}
+      {scheduleOpen && (
+        <ScheduleModal
+          specialists={specialists}
+          onClose={() => setScheduleOpen(false)}
+          onSaved={schedule}
+        />
+      )}
+
+      {/* Delete confirm */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="حذف اللقاء"
+        subtitle="لا يمكن التراجع عن هذا الإجراء"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+              إلغاء
+            </Button>
+            <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex items-start gap-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
+            <Icon name="trash" size={20} />
+          </span>
+          <p className="text-sm leading-relaxed text-ink-soft">
+            هل أنت متأكد من حذف اللقاء <span className="font-extrabold text-ink">«{deleteTarget?.title}»</span>؟
+            سيتم حذف اللقاء وجميع بياناته نهائياً.
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }

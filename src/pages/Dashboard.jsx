@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Area, AreaChart, CartesianGrid, Cell, Pie, PieChart,
@@ -9,7 +10,19 @@ import StatCard from '../components/ui/StatCard'
 import Badge from '../components/ui/Badge'
 import Avatar from '../components/ui/Avatar'
 import Icon from '../components/ui/Icon'
-import { revenueSeries, revenueSplit, stats, specialists, upcomingSessions, topCourses } from '../data/mock'
+import { api } from '../api'
+import { num } from '../utils/format'
+
+/* Stat-card presentation per dashboard slot (label comes from the API). */
+const STAT_PRESENTATION = [
+  { icon: 'wallet', tint: 'teal', money: true },
+  { icon: 'users', tint: 'soft' },
+  { icon: 'user-check', tint: 'white' },
+  { icon: 'book', tint: 'emerald' },
+]
+
+const STATUS_TONE = { نشط: 'success', معلق: 'warning', موقوف: 'danger' }
+const SESSION_TONE = { محجوزة: 'success', 'قيد الانتظار': 'warning', مكتملة: 'neutral', ملغاة: 'danger' }
 
 function todayArabic() {
   // ar-SA defaults to the Hijri calendar; pin Gregorian + Latin digits to match the design
@@ -52,6 +65,61 @@ function DonutTooltip({ active, payload }) {
 /* ---------- Dashboard page ---------- */
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api.dashboard()
+      .then((d) => {
+        if (cancelled) return
+        setData({
+          ...d,
+          stats: d.stats.map((s, i) => ({
+            ...s,
+            icon: STAT_PRESENTATION[i]?.icon ?? 'chart',
+            tint: STAT_PRESENTATION[i]?.tint ?? 'teal',
+            value: STAT_PRESENTATION[i]?.money ? `${num(Number(s.value))} ر.س` : num(Number(s.value)),
+          })),
+          specialists: d.specialists.map((s) => ({ ...s, tone: STATUS_TONE[s.status] ?? 'neutral' })),
+          upcomingSessions: d.upcomingSessions.map((s) => ({ ...s, tone: SESSION_TONE[s.status] ?? 'neutral' })),
+        })
+      })
+      .catch((e) => !cancelled && setError(e.message))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل لوحة المعلومات</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-2 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل لوحة المعلومات...
+        </div>
+      </div>
+    )
+  }
+
+  const { stats, revenueSeries, revenueSplit, specialists, upcomingSessions, topCourses } = data
+  const yearTotal = revenueSeries.reduce((sum, p) => sum + Number(p.earnings), 0)
+  const yearTotalThousands = num(Math.round(yearTotal / 1000))
 
   return (
     <div className="space-y-6">
@@ -83,7 +151,7 @@ export default function Dashboard() {
         <Card className="xl:col-span-2">
           <CardHeader
             title="الأرباح الشهرية"
-            subtitle="إجمالي الأرباح بالآلاف (ر.س) خلال آخر 12 شهراً"
+            subtitle="إجمالي الأرباح (ر.س) خلال آخر 12 شهراً"
             actions={
               <Badge tone="teal" dot>محدث الآن</Badge>
             }
@@ -111,7 +179,7 @@ export default function Dashboard() {
                   tickLine={false}
                   width={36}
                 />
-                <Tooltip content={<ChartTooltip suffix=" ألف" />} cursor={{ stroke: '#75bcba', strokeDasharray: '4 4' }} />
+                <Tooltip content={<ChartTooltip suffix=" ر.س" />} cursor={{ stroke: '#75bcba', strokeDasharray: '4 4' }} />
                 <Area
                   type="monotone"
                   dataKey="earnings"
@@ -150,8 +218,8 @@ export default function Dashboard() {
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="text-center">
-                  <p className="text-2xl font-extrabold text-ink">237</p>
-                  <p className="text-[11px] font-semibold text-ink-mute">ألف ر.س</p>
+                  <p className="text-2xl font-extrabold text-ink">{yearTotalThousands}</p>
+                  <p className="text-[11px] font-semibold text-ink-mute">ألف ر.س سنوياً</p>
                 </div>
               </div>
             </div>
@@ -191,7 +259,7 @@ export default function Dashboard() {
               </thead>
               <tbody className="divide-y divide-line">
                 {specialists.map((s) => (
-                  <tr key={s.name} className="transition-colors hover:bg-mint/40">
+                  <tr key={s.id} className="transition-colors hover:bg-mint/40">
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar name={s.name} size={38} />
@@ -232,7 +300,7 @@ export default function Dashboard() {
           <ul className="space-y-1 px-3 pb-4">
             {upcomingSessions.map((s) => (
               <li
-                key={`${s.client}-${s.time}`}
+                key={s.id}
                 className="flex items-center gap-3 rounded-xl p-2.5 transition-colors hover:bg-mint/40"
               >
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-mint text-primary">
@@ -260,9 +328,9 @@ export default function Dashboard() {
         />
         <div className="space-y-5 px-5 pb-6 pt-2">
           {topCourses.map((c) => {
-            const pct = Math.round((c.enrolled / c.total) * 100)
+            const pct = c.total > 0 ? Math.round((c.enrolled / c.total) * 100) : 0
             return (
-              <div key={c.title}>
+              <div key={c.id}>
                 <div className="mb-1.5 flex items-center justify-between text-sm">
                   <p className="font-bold text-ink">{c.title}</p>
                   <p className="font-semibold text-ink-soft">

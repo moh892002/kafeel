@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
+import { AuthProvider, RequireAuth } from './auth'
 import AppLayout from './components/layout/AppLayout'
 import Placeholder from './pages/Placeholder'
 
@@ -9,6 +10,7 @@ const Specialists = lazy(() => import('./pages/Specialists'))
 const SpecialistDetails = lazy(() => import('./pages/SpecialistDetails'))
 const AddSpecialist = lazy(() => import('./pages/AddSpecialist'))
 const Earnings = lazy(() => import('./pages/Earnings'))
+const Transactions = lazy(() => import('./pages/Transactions'))
 const Courses = lazy(() => import('./pages/Courses'))
 const CourseForm = lazy(() => import('./pages/CourseForm'))
 const CourseDetails = lazy(() => import('./pages/CourseDetails'))
@@ -21,14 +23,18 @@ const Notifications = lazy(() => import('./pages/Notifications'))
 const Faq = lazy(() => import('./pages/Faq'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Profile = lazy(() => import('./pages/Profile'))
+const Login = lazy(() => import('./pages/Login'))
 
 function App() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-surface text-primary">جاري التحميل...</div>}>
-      <Routes>
-        <Route element={<AppLayout />}>
+    <AuthProvider>
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-surface text-primary">جاري التحميل...</div>}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="/earnings" element={<Earnings />} />
+          <Route path="/transactions" element={<Transactions />} />
           <Route path="/programs" element={<Programs />} />
           <Route path="/courses" element={<Courses />} />
           <Route path="/courses/add" element={<CourseForm />} />
@@ -45,10 +51,11 @@ function App() {
           <Route path="/faq" element={<Faq />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="*" element={<Placeholder title="الصفحة غير موجودة" icon="target" />} />
+          <Route path="*" element={<Dashboard />} />
         </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </AuthProvider>
   )
 }
 

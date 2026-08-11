@@ -1,8 +1,12 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import Icon from '../ui/Icon'
 import { NAV_SECTIONS } from '../../data/nav'
+import { useAuth } from '../../useAuth'
 
 export default function Sidebar({ open, onClose }) {
+  const navigate = useNavigate()
+  const { admin, logout } = useAuth()
+  const name = admin?.name ?? 'المدير'
   return (
     <>
       {/* Mobile overlay */}
@@ -73,16 +77,21 @@ export default function Sidebar({ open, onClose }) {
         {/* Footer user card */}
         <div className="m-4 mt-2 rounded-2xl bg-white/5 p-3">
           <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-full bg-accent text-sm font-extrabold text-primary-dark">
-              م
+            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-extrabold text-primary-dark">
+              {name.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-white">م. محمد العتيبي</p>
+              <p className="truncate text-sm font-bold text-white">{name}</p>
               <p className="truncate text-[11px] text-white/50">مدير المنصة</p>
             </div>
             <button
-              className="grid size-9 place-items-center rounded-xl text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              className="grid size-9 shrink-0 place-items-center rounded-xl text-white/50 transition-colors hover:bg-white/10 hover:text-white"
               title="تسجيل الخروج"
+              aria-label="تسجيل الخروج"
+              onClick={() => {
+                logout()
+                navigate('/login')
+              }}
             >
               <Icon name="logout" size={18} />
             </button>

@@ -7,7 +7,7 @@ import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import { Input, Select } from '../components/ui/Input'
-import { CLIENTS, CITIES } from '../data/clients'
+import { api } from '../api'
 import { fmtDate, num } from '../utils/format'
 
 const PAGE_SIZE = 8
@@ -81,7 +81,7 @@ function ClientProfileModal({ client, onClose }) {
           {[
             { icon: 'clipboard', label: 'الجلسات', value: num(c.sessions) },
             { icon: 'wallet', label: 'إجمالي الإنفاق', value: `${num(c.spent)} ر.س` },
-            { icon: 'star', label: 'التقييم', value: c.rating.toFixed(1) },
+            { icon: 'star', label: 'التقييم', value: Number(c.rating).toFixed(1) },
             { icon: 'calendar', label: 'آخر زيارة', value: fmtDate(c.lastVisit) },
           ].map((x) => (
             <div key={x.label} className="rounded-xl border border-line bg-white px-3 py-2.5">
@@ -111,14 +111,20 @@ function ClientProfileModal({ client, onClose }) {
 
         <div>
           <p className="mb-2 text-sm font-extrabold text-ink">آخر النشاطات</p>
-          <ul className="divide-y divide-line rounded-xl border border-line">
-            {c.activity.map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <Badge tone={ACTIVITY_TONE[a.type]} compact>{a.type}</Badge>
-                <span className="text-xs font-semibold text-ink-mute">{fmtDate(a.date)}</span>
-              </li>
-            ))}
-          </ul>
+          {c.activity?.length ? (
+            <ul className="divide-y divide-line rounded-xl border border-line">
+              {c.activity.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <Badge tone={ACTIVITY_TONE[a.type]} compact>{a.type}</Badge>
+                  <span className="text-xs font-semibold text-ink-mute">{fmtDate(a.date)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-line bg-surface/50 px-4 py-3 text-xs font-semibold text-ink-mute">
+              لا توجد نشاطات حديثة لهذا العميل
+            </p>
+          )}
         </div>
       </div>
     </Modal>
@@ -127,6 +133,9 @@ function ClientProfileModal({ client, onClose }) {
 
 /* ---------- Page ---------- */
 export default function Clients() {
+  const [clients, setClients] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [city, setCity] = useState('الكل')
   const [stat, setStat] = useState('الكل')
@@ -136,10 +145,30 @@ export default function Clients() {
   const [notice, setNotice] = useState(null)
 
   useEffect(() => {
+    let cancelled = false
+    api.clients()
+      .then((rows) => {
+        if (cancelled) return
+        setClients(rows)
+        setLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!notice) return undefined
     const t = setTimeout(() => setNotice(null), 4000)
     return () => clearTimeout(t)
   }, [notice])
+
+  const CITIES = useMemo(() => ['الكل', ...new Set(clients.map((c) => c.city).filter(Boolean))], [clients])
 
   const now = useMemo(() => new Date(), [])
   const monthAgo = useMemo(() => {
@@ -149,19 +178,19 @@ export default function Clients() {
   }, [now])
 
   const counts = useMemo(() => {
-    const c = { الكل: CLIENTS.length, نشط: 0, جديد: 0, مميز: 0 }
-    CLIENTS.forEach((x) => {
+    const c = { الكل: clients.length, نشط: 0, جديد: 0, مميز: 0 }
+    clients.forEach((x) => {
       if (x.status === 'نشط') c['نشط'] += 1
       if (x.joinedAt >= monthAgo) c['جديد'] += 1
       if (x.vip) c['مميز'] += 1
     })
     return c
-  }, [monthAgo])
+  }, [clients, monthAgo])
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     const [skey, sdir] = sort.split(':')
-    const list = CLIENTS.filter((c) => {
+    const list = clients.filter((c) => {
       if (stat === 'نشط' && c.status !== 'نشط') return false
       if (stat === 'جديد' && c.joinedAt < monthAgo) return false
       if (stat === 'مميز' && !c.vip) return false
@@ -173,7 +202,7 @@ export default function Clients() {
       const cmp = skey === 'name' ? a.name.localeCompare(b.name, 'ar') : a[skey] < b[skey] ? -1 : a[skey] > b[skey] ? 1 : 0
       return sdir === 'asc' ? cmp : -cmp
     })
-  }, [search, city, stat, sort, monthAgo])
+  }, [clients, search, city, stat, sort, monthAgo])
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount)
@@ -190,6 +219,21 @@ export default function Clients() {
     a.click()
     URL.revokeObjectURL(url)
     setNotice('تم تصدير الملف بنجاح ✓')
+  }
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل العملاء</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
   }
 
   return (
@@ -253,7 +297,7 @@ export default function Clients() {
           </div>
           <Select className="w-40" value={city} onChange={(e) => { setCity(e.target.value); setPage(1) }}>
             <option value="الكل">كل المدن</option>
-            {CITIES.map((c) => (
+            {CITIES.filter((c) => c !== 'الكل').map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -271,7 +315,12 @@ export default function Clients() {
 
       {/* Table */}
       <Card className="overflow-hidden">
-        {paged.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 px-6 py-20 text-sm font-bold text-primary">
+            <Icon name="loader" size={18} className="animate-spin" />
+            جاري تحميل العملاء...
+          </div>
+        ) : paged.length === 0 ? (
           <div className="flex flex-col items-center px-6 py-20 text-center">
             <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
               <Icon name="users" size={38} strokeWidth={1.6} />
@@ -318,7 +367,7 @@ export default function Clients() {
                     <td className="px-4 py-3.5">
                       <span className="inline-flex items-center gap-1 font-extrabold text-ink">
                         <Icon name="star" size={14} className="text-amber-400" />
-                        {c.rating.toFixed(1)}
+                        {Number(c.rating).toFixed(1)}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-ink-soft">{fmtDate(c.lastVisit)}</td>
@@ -342,7 +391,7 @@ export default function Clients() {
             </table>
           </div>
         )}
-        {rows.length > 0 && <Pagination page={safePage} pageSize={PAGE_SIZE} total={rows.length} onChange={setPage} />}
+        {!loading && rows.length > 0 && <Pagination page={safePage} pageSize={PAGE_SIZE} total={rows.length} onChange={setPage} />}
       </Card>
 
       {/* Profile modal */}

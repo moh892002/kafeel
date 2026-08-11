@@ -6,6 +6,7 @@ export const NAV_SECTIONS = [
     label: 'إدارة المنصة',
     items: [
       { label: 'الأرباح', path: '/earnings', icon: 'banknote' },
+      { label: 'المعاملات', path: '/transactions', icon: 'wallet' },
       { label: 'البرامج', path: '/programs', icon: 'graduation' },
       { label: 'الدورات', path: '/courses', icon: 'book' },
       { label: 'الجلسات', path: '/sessions', icon: 'clipboard' },
@@ -30,5 +31,3 @@ export const NAV_SECTIONS = [
     ],
   },
 ]
-
-export const FLAT_NAV = NAV_SECTIONS.flatMap((s) => s.items)

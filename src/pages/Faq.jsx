@@ -5,7 +5,8 @@ import Badge from '../components/ui/Badge'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import { Input, Select, Textarea } from '../components/ui/Input'
-import { FAQS, FAQ_CATEGORIES } from '../data/faq'
+import { api } from '../api'
+import { FAQ_CATEGORIES } from '../data/faq'
 import { num } from '../utils/format'
 
 /* ---------- Add/Edit modal ---------- */
@@ -14,13 +15,14 @@ function FaqFormModal({ initial, onClose, onSave }) {
     initial ?? { category: FAQ_CATEGORIES[0], question: '', answer: '', pinned: false },
   )
   const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const set = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
     setError(null)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.question.trim()) {
       setError('يرجى كتابة السؤال')
       return
@@ -29,7 +31,13 @@ function FaqFormModal({ initial, onClose, onSave }) {
       setError('يرجى كتابة الإجابة')
       return
     }
-    onSave({ ...form, question: form.question.trim(), answer: form.answer.trim() })
+    setSubmitting(true)
+    try {
+      await onSave({ ...form, question: form.question.trim(), answer: form.answer.trim() })
+    } catch (e) {
+      setError(e.message)
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -44,8 +52,8 @@ function FaqFormModal({ initial, onClose, onSave }) {
           <Button variant="ghost" onClick={onClose}>
             إلغاء
           </Button>
-          <Button icon={<Icon name="check" size={16} />} onClick={save}>
-            {initial ? 'حفظ التعديلات' : 'إضافة السؤال'}
+          <Button icon={<Icon name="check" size={16} />} onClick={save} disabled={submitting}>
+            {submitting ? 'جارٍ الحفظ...' : initial ? 'حفظ التعديلات' : 'إضافة السؤال'}
           </Button>
         </>
       }
@@ -82,13 +90,16 @@ function FaqFormModal({ initial, onClose, onSave }) {
 
 /* ---------- Page ---------- */
 export default function Faq() {
-  const [faqs, setFaqs] = useState(FAQS)
+  const [faqs, setFaqs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('الكل')
   const [openId, setOpenId] = useState(null)
   const [editing, setEditing] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const [notice, setNotice] = useState(null)
 
   useEffect(() => {
@@ -96,6 +107,26 @@ export default function Faq() {
     const t = setTimeout(() => setNotice(null), 4000)
     return () => clearTimeout(t)
   }, [notice])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const list = await api.faqs()
+        if (cancelled) return
+        setFaqs(list ?? [])
+        setLoading(false)
+      } catch (e) {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const counts = useMemo(() => {
     const c = { 'الكل': faqs.length }
@@ -118,22 +149,59 @@ export default function Faq() {
     return [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.id - b.id)
   }, [faqs, search, category])
 
-  const save = (data) => {
+  const save = async (data) => {
     if (editing) {
-      setFaqs((prev) => prev.map((f) => (f.id === editing.id ? { ...f, ...data } : f)))
-      setNotice('تم حفظ التعديلات بنجاح ✓')
+      const updated = await api.updateFaq(editing.id, data)
+      setFaqs((prev) => prev.map((f) => (f.id === editing.id ? updated : f)))
+      setNotice({ text: 'تم حفظ التعديلات بنجاح ✓', tone: 'success' })
     } else {
-      setFaqs((prev) => [...prev, { id: prev.reduce((m, x) => Math.max(m, x.id), 0) + 1, ...data, helpful: 0 }])
-      setNotice('تمت إضافة السؤال بنجاح ✓')
+      const created = await api.createFaq(data)
+      setFaqs((prev) => [...prev, created])
+      setNotice({ text: 'تمت إضافة السؤال بنجاح ✓', tone: 'success' })
     }
     setEditing(null)
     setAddOpen(false)
   }
 
-  const confirmDelete = () => {
-    setFaqs((prev) => prev.filter((f) => f.id !== deleteTarget.id))
-    setNotice(`تم حذف السؤال «${deleteTarget.question}» بنجاح`)
-    setDeleteTarget(null)
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.deleteFaq(deleteTarget.id)
+      setFaqs((prev) => prev.filter((f) => f.id !== deleteTarget.id))
+      setNotice({ text: `تم حذف السؤال «${deleteTarget.question}» بنجاح`, tone: 'success' })
+      setDeleteTarget(null)
+    } catch (e) {
+      setNotice({ text: e.message, tone: 'error' })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الأسئلة الشائعة</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل الأسئلة الشائعة...
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -151,10 +219,16 @@ export default function Faq() {
 
       {/* Notice */}
       {notice && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent-soft/30 bg-mint px-4 py-3 text-sm font-bold text-primary animate-slide-in">
+        <div
+          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-600'
+              : 'border-accent-soft/30 bg-mint text-primary'
+          }`}
+        >
           <span className="flex items-center gap-2">
-            <Icon name="check" size={16} strokeWidth={2.4} />
-            {notice}
+            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
+            {notice.text}
           </span>
           <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
             <Icon name="x" size={14} />
@@ -274,8 +348,8 @@ export default function Faq() {
           footer={
             <>
               <Button variant="ghost" onClick={() => setDeleteTarget(null)}>إلغاء</Button>
-              <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete}>
-                حذف نهائي
+              <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete} disabled={deleting}>
+                {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
               </Button>
             </>
           }

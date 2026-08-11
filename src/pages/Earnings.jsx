@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -9,7 +9,8 @@ import StatCard from '../components/ui/StatCard'
 import Badge from '../components/ui/Badge'
 import Avatar from '../components/ui/Avatar'
 import Icon from '../components/ui/Icon'
-import { getEarnings, PERIODS } from '../data/earnings'
+import { api } from '../api'
+import { PERIODS } from '../data/earnings'
 import { fmtDate, num } from '../utils/format'
 
 const TX_TONE = { مكتمل: 'success', 'قيد المعالجة': 'warning', مسترد: 'danger' }
@@ -35,7 +36,7 @@ function ChartTooltip({ active, payload, label }) {
       {payload.map((p) => (
         <p key={p.dataKey} className="flex items-center gap-2 text-sm font-extrabold text-ink">
           <span className="size-2.5 rounded-full" style={{ background: p.stroke ?? p.fill }} />
-          {p.value.toLocaleString('en-US')} ألف ر.س
+          {num(Math.round(p.value))} ر.س
           {p.dataKey === 'prev' && <span className="text-[10px] font-bold text-ink-mute">(السابقة)</span>}
         </p>
       ))}
@@ -58,22 +59,86 @@ function DonutTooltip({ active, payload }) {
 
 export default function Earnings() {
   const [period, setPeriod] = useState('month')
-  const data = useMemo(() => getEarnings(period), [period])
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  const { labels, series, prev, total, prevTotal, delta, split, top, transactions } = data
-  const chartData = labels.map((label, i) => ({ label, current: series[i], prev: prev[i] }))
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    api.earningsSummary(period)
+      .then((d) => {
+        if (cancelled) return
+        setData(d)
+        setLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [period])
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الأرباح</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (loading || !data) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل ملخص الأرباح...
+        </div>
+      </div>
+    )
+  }
+
+  const total = Number(data.total)
+  const prevTotal = Number(data.prevTotal)
+  const delta = Number(data.delta)
+  const split = data.split ?? []
+  const transactions = data.transactions ?? []
+  const chartData = (data.series ?? []).map((p) => ({ label: p.label, current: Number(p.current), prev: Number(p.prev) }))
+
+  // The API reports full SAR values (no thousands) — the leaderboard card is built
+  // from the biggest real transactions of the period.
+  const top = [...transactions].sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 5)
+  const maxEarnings = Math.max(...top.map((t) => Number(t.amount)), 1)
 
   const stats = [
-    { label: 'إجمالي الأرباح', value: `${num(Math.round(total))} ألف ر.س`, icon: 'wallet', tint: 'teal', delta, hint: `مقارنة بالفترة السابقة (${num(Math.round(prevTotal))} ألف)` },
-    { label: 'عدد المعاملات', value: num(data.totalTx), icon: 'clipboard', tint: 'soft', delta: 9.3, hint: 'معاملة ناجحة خلال الفترة' },
-    { label: 'متوسط قيمة المعاملة', value: `${num(data.avgTx)} ر.س`, icon: 'trending-up', tint: 'white', delta: 3.8, hint: 'أعلى من المتوسط العام' },
-    { label: 'العمولات المحصلة', value: `${num(Math.round(total * 0.15))} ألف ر.س`, icon: 'banknote', tint: 'emerald', delta: 11.2, hint: '15% من إجمالي الأرباح' },
+    {
+      label: 'إجمالي الأرباح',
+      value: `${num(Math.round(total))} ر.س`,
+      icon: 'wallet',
+      tint: 'teal',
+      delta,
+      hint: `مقارنة بالفترة السابقة (${num(Math.round(prevTotal))} ر.س)`,
+    },
+    { label: 'عدد المعاملات', value: num(data.totalTx), icon: 'clipboard', tint: 'soft', hint: 'معاملة ناجحة خلال الفترة' },
+    { label: 'متوسط قيمة المعاملة', value: `${num(Math.round(Number(data.avgTx)))} ر.س`, icon: 'trending-up', tint: 'white', hint: 'إجمالي الأرباح مقسوم على عدد المعاملات' },
+    { label: 'العمولات المحصلة', value: `${num(Math.round(Number(data.commission)))} ر.س`, icon: 'banknote', tint: 'emerald', hint: 'نسبة المنصة من المعاملات المكتملة' },
   ]
 
   const exportCsv = () => {
     const header = ['المعاملة', 'العميل', 'الخدمة', 'طريقة الدفع', 'التاريخ', 'المبلغ (ر.س)', 'العمولة', 'الحالة']
     const lines = transactions.map((t) =>
-      [t.id, t.client, t.service, t.method, t.date, t.amount, t.commission, t.status].join(','),
+      [t.reference, t.client, t.service, t.method, t.date, t.amount, t.commission, t.status].join(','),
     )
     const blob = new Blob(['\uFEFF' + [header.join(','), ...lines].join('\n')], {
       type: 'text/csv;charset=utf-8;',
@@ -85,8 +150,6 @@ export default function Earnings() {
     a.click()
     URL.revokeObjectURL(url)
   }
-
-  const maxEarnings = Math.max(...top.map((t) => t.earnings))
 
   return (
     <div className="space-y-6">
@@ -134,7 +197,7 @@ export default function Earnings() {
         <Card className="xl:col-span-2">
           <CardHeader
             title="الأرباح خلال الفترة"
-            subtitle="مقارنة مع الفترة السابقة (بالآلاف ر.س)"
+            subtitle="مقارنة مع الفترة السابقة (ر.س)"
             actions={<Legend items={[{ label: 'الفترة الحالية', color: '#075e66' }, { label: 'الفترة السابقة', color: '#c4d6d5' }]} />}
           />
           <div className="px-2 pb-3 pt-2" style={{ direction: 'ltr' }}>
@@ -210,7 +273,7 @@ export default function Earnings() {
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="text-center">
                   <p className="text-2xl font-extrabold text-ink">{num(Math.round(total))}</p>
-                  <p className="text-[11px] font-semibold text-ink-mute">ألف ر.س</p>
+                  <p className="text-[11px] font-semibold text-ink-mute">ر.س</p>
                 </div>
               </div>
             </div>
@@ -232,7 +295,7 @@ export default function Earnings() {
       {/* Bar chart + leaderboard */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <CardHeader title="الأرباح حسب الخدمة" subtitle="القيمة الإجمالية لكل خدمة (بالآلاف ر.س)" />
+          <CardHeader title="الأرباح حسب الخدمة" subtitle="النسبة المئوية لكل خدمة من إجمالي الفترة" />
           <div className="px-2 pb-3 pt-2" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={split} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
@@ -256,7 +319,7 @@ export default function Earnings() {
                       <div className="rounded-xl border border-line bg-white px-3.5 py-2.5 shadow-pop">
                         <p className="mb-1 text-xs font-bold text-ink-mute">{label}</p>
                         <p className="text-sm font-extrabold text-primary">
-                          {Math.round((total * (payload[0].value / 100))).toLocaleString('en-US')} ألف ر.س
+                          {num(Math.round((total * Number(payload[0].value)) / 100))} ر.س
                         </p>
                       </div>
                     ) : null
@@ -273,33 +336,43 @@ export default function Earnings() {
         </Card>
 
         <Card>
-          <CardHeader title="الأعلى تحقيقاً للأرباح" subtitle="أفضل 5 أخصائيين في الفترة" />
-          <ul className="space-y-4 px-5 pb-6 pt-1">
-            {top.map((t, i) => (
-              <li key={t.name}>
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span
-                      className={`grid size-6 shrink-0 place-items-center rounded-lg text-[11px] font-extrabold ${
-                        i === 0 ? 'bg-primary text-white' : i === 1 ? 'bg-accent-soft text-white' : 'bg-mint text-primary'
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <Avatar name={t.name} size={30} />
-                    <span className="truncate text-sm font-bold text-ink">{t.name}</span>
-                  </div>
-                  <span className="shrink-0 text-sm font-extrabold text-ink">{num(t.earnings)} ألف</span>
-                </div>
-                <div className="ms-11 h-2 overflow-hidden rounded-full bg-mint">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-accent-soft to-primary transition-all duration-700"
-                    style={{ width: `${(t.earnings / maxEarnings) * 100}%` }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <CardHeader title="أعلى المعاملات في الفترة" subtitle="أكبر 5 معاملات مالية" />
+          {top.length === 0 ? (
+            <p className="px-5 pb-6 text-sm font-semibold text-ink-mute">لا توجد معاملات في هذه الفترة.</p>
+          ) : (
+            <ul className="space-y-4 px-5 pb-6 pt-1">
+              {top.map((t, i) => {
+                const amount = Number(t.amount)
+                return (
+                  <li key={t.id}>
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          className={`grid size-6 shrink-0 place-items-center rounded-lg text-[11px] font-extrabold ${
+                            i === 0 ? 'bg-primary text-white' : i === 1 ? 'bg-accent-soft text-white' : 'bg-mint text-primary'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <Avatar name={t.client} size={30} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-bold text-ink">{t.client}</span>
+                          <span className="block truncate text-[11px] text-ink-mute">{t.service}</span>
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-sm font-extrabold text-ink">{num(amount)} ر.س</span>
+                    </div>
+                    <div className="ms-11 h-2 overflow-hidden rounded-full bg-mint">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-accent-soft to-primary transition-all duration-700"
+                        style={{ width: `${(amount / maxEarnings) * 100}%` }}
+                      />
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </Card>
       </div>
 
@@ -327,7 +400,7 @@ export default function Earnings() {
             <tbody className="divide-y divide-line">
               {transactions.map((t) => (
                 <tr key={t.id} className="transition-colors hover:bg-mint/40">
-                  <td className="px-5 py-3.5 font-extrabold text-primary">{t.id}</td>
+                  <td className="px-5 py-3.5 font-extrabold text-primary">{t.reference}</td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2.5">
                       <Avatar name={t.client} size={32} />

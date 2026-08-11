@@ -4,25 +4,26 @@ import Card, { CardHeader } from '../components/ui/Card'
 import Icon from '../components/ui/Icon'
 import { Input, Select, Textarea } from '../components/ui/Input'
 import Switch from '../components/ui/Switch'
+import { api } from '../api'
 
 const field = (setter) => (key) => (e) => setter((prev) => ({ ...prev, [key]: e.target.value }))
 const toggle = (setter) => (key) => () => setter((prev) => ({ ...prev, [key]: !prev[key] }))
 
-export default function Settings() {
-  const [platform, setPlatform] = useState({
+const DEFAULTS = {
+  platform: {
     name: 'كفيل',
     description: 'منصة الاستشارات والبرامج التدريبية المتخصصة',
     email: 'support@kafeel.sa',
     phone: '920000000',
-  })
-  const [locale, setLocale] = useState({
+  },
+  locale: {
     language: 'العربية',
     currency: 'ر.س',
     timezone: '(GMT+3) الرياض',
     weekStart: 'السبت',
-  })
-  const [payments, setPayments] = useState({ rate: 15, minPayout: 200, mada: true, visa: true, apple: true })
-  const [prefs, setPrefs] = useState({
+  },
+  payments: { rate: 15, minPayout: 200, mada: true, visa: true, apple: true },
+  prefs: {
     booking: true,
     payment: true,
     review: true,
@@ -30,7 +31,21 @@ export default function Settings() {
     email: true,
     sms: false,
     push: true,
-  })
+  },
+}
+
+/* Reads one dotted key from the settings map with a default fallback. */
+const str = (map, key, fallback) => (map[key] === undefined || map[key] === null ? fallback : map[key])
+const bool = (map, key, fallback) => (map[key] === undefined ? fallback : map[key] === 'true')
+
+export default function Settings() {
+  const [platform, setPlatform] = useState(DEFAULTS.platform)
+  const [locale, setLocale] = useState(DEFAULTS.locale)
+  const [payments, setPayments] = useState(DEFAULTS.payments)
+  const [prefs, setPrefs] = useState(DEFAULTS.prefs)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
 
   useEffect(() => {
@@ -39,7 +54,95 @@ export default function Settings() {
     return () => clearTimeout(t)
   }, [notice])
 
-  const save = () => setNotice('تم حفظ الإعدادات بنجاح ✓')
+  useEffect(() => {
+    let cancelled = false
+    api.settings()
+      .then((map) => {
+        if (cancelled) return
+        const s = map ?? {}
+        setPlatform({
+          name: str(s, 'platform.name', DEFAULTS.platform.name),
+          description: str(s, 'platform.description', DEFAULTS.platform.description),
+          email: str(s, 'platform.email', DEFAULTS.platform.email),
+          phone: str(s, 'platform.phone', DEFAULTS.platform.phone),
+        })
+        setLocale({
+          language: str(s, 'locale.language', DEFAULTS.locale.language),
+          currency: str(s, 'locale.currency', DEFAULTS.locale.currency),
+          timezone: str(s, 'locale.timezone', DEFAULTS.locale.timezone),
+          weekStart: str(s, 'locale.weekStart', DEFAULTS.locale.weekStart),
+        })
+        setPayments({
+          rate: str(s, 'payments.rate', DEFAULTS.payments.rate),
+          minPayout: str(s, 'payments.minPayout', DEFAULTS.payments.minPayout),
+          mada: bool(s, 'payments.mada', DEFAULTS.payments.mada),
+          visa: bool(s, 'payments.visa', DEFAULTS.payments.visa),
+          apple: bool(s, 'payments.apple', DEFAULTS.payments.apple),
+        })
+        setPrefs({
+          booking: bool(s, 'notifications.booking', DEFAULTS.prefs.booking),
+          payment: bool(s, 'notifications.payment', DEFAULTS.prefs.payment),
+          review: bool(s, 'notifications.review', DEFAULTS.prefs.review),
+          specialist: bool(s, 'notifications.specialist', DEFAULTS.prefs.specialist),
+          email: bool(s, 'notifications.email', DEFAULTS.prefs.email),
+          sms: bool(s, 'notifications.sms', DEFAULTS.prefs.sms),
+          push: bool(s, 'notifications.push', DEFAULTS.prefs.push),
+        })
+        setLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    const values = {
+      ...Object.fromEntries(Object.entries(platform).map(([k, v]) => [`platform.${k}`, String(v)])),
+      ...Object.fromEntries(Object.entries(locale).map(([k, v]) => [`locale.${k}`, String(v)])),
+      ...Object.fromEntries(Object.entries(payments).map(([k, v]) => [`payments.${k}`, String(v)])),
+      ...Object.fromEntries(Object.entries(prefs).map(([k, v]) => [`notifications.${k}`, String(v)])),
+    }
+    try {
+      await api.updateSettings(values)
+      setNotice({ text: 'تم حفظ الإعدادات بنجاح ✓', tone: 'success' })
+    } catch (e) {
+      setNotice({ text: e.message, tone: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الإعدادات</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل الإعدادات...
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -49,17 +152,23 @@ export default function Settings() {
           <h2 className="text-2xl font-extrabold text-ink">الإعدادات العامة</h2>
           <p className="mt-1 text-sm text-ink-soft">إعدادات المنصة واللغة والإقليم والمدفوعات والإشعارات</p>
         </div>
-        <Button icon={<Icon name="check" size={17} />} onClick={save}>
-          حفظ الإعدادات
+        <Button icon={<Icon name="check" size={17} />} onClick={save} disabled={saving}>
+          {saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}
         </Button>
       </div>
 
       {/* Notice */}
       {notice && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent-soft/30 bg-mint px-4 py-3 text-sm font-bold text-primary animate-slide-in">
+        <div
+          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-600'
+              : 'border-accent-soft/30 bg-mint text-primary'
+          }`}
+        >
           <span className="flex items-center gap-2">
-            <Icon name="check" size={16} strokeWidth={2.4} />
-            {notice}
+            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
+            {notice.text}
           </span>
           <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
             <Icon name="x" size={14} />
@@ -148,8 +257,8 @@ export default function Settings() {
       </Card>
 
       <div className="flex justify-end">
-        <Button size="lg" icon={<Icon name="check" size={18} />} onClick={save}>
-          حفظ الإعدادات
+        <Button size="lg" icon={<Icon name="check" size={18} />} onClick={save} disabled={saving}>
+          {saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}
         </Button>
       </div>
     </div>

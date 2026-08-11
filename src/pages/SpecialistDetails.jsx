@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import Card, { CardHeader } from '../components/ui/Card'
@@ -6,7 +6,7 @@ import StatCard from '../components/ui/StatCard'
 import Badge from '../components/ui/Badge'
 import Avatar from '../components/ui/Avatar'
 import Icon from '../components/ui/Icon'
-import { getSpecialistDetail } from '../data/specialistDetails'
+import { api } from '../api'
 import { fmtDate, num } from '../utils/format'
 
 const STATUS_TONE = { نشط: 'success', معلق: 'warning', موقوف: 'danger' }
@@ -31,7 +31,61 @@ export default function SpecialistDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const detail = useMemo(() => getSpecialistDetail(Number(id)), [id])
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    api.specialistDetail(id)
+      .then((d) => {
+        if (cancelled) return
+        setDetail(d)
+        setLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        // 404 surfaces as "not found"; anything else as a retryable error
+        if (e.status === 404) {
+          setDetail(null)
+          setError(null)
+        } else {
+          setError(e.message)
+        }
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-2 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل بيانات الأخصائي...
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل بيانات الأخصائي</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
 
   if (!detail) {
     return (
@@ -201,39 +255,43 @@ export default function SpecialistDetails() {
 
         <Card className="xl:col-span-2">
           <CardHeader title="آخر الجلسات" subtitle={`أحدث ${sessions.length} جلسات مسجلة خلال آخر 90 يوم`} />
-          <div className="overflow-x-auto pb-3">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="text-[11px] font-bold uppercase tracking-wide text-ink-mute">
-                  <th className="px-4 py-2.5 text-start">العميل</th>
-                  <th className="px-4 py-2.5 text-start">النوع</th>
-                  <th className="px-4 py-2.5 text-start">التاريخ</th>
-                  <th className="px-4 py-2.5 text-start">الوقت</th>
-                  <th className="px-4 py-2.5 text-start">الرسوم</th>
-                  <th className="px-4 py-2.5 text-start">الحالة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {sessions.slice(0, 6).map((se) => (
-                  <tr key={se.id} className="transition-colors hover:bg-mint/40">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={se.client} size={32} />
-                        <span className="font-bold text-ink">{se.client}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-ink-soft">{se.type}</td>
-                    <td className="px-4 py-3 text-ink-soft">{fmtDate(se.date)}</td>
-                    <td className="px-4 py-3 text-ink-soft">{se.time}</td>
-                    <td className="px-4 py-3 font-semibold text-ink">{num(se.fee)} ر.س</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={SESSION_TONE[se.status]} dot>{se.status}</Badge>
-                    </td>
+          {sessions.length === 0 ? (
+            <p className="px-4 pb-6 text-sm text-ink-mute">لا توجد جلسات مسجلة لهذا الأخصائي خلال آخر 90 يوم.</p>
+          ) : (
+            <div className="overflow-x-auto pb-3">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="text-[11px] font-bold uppercase tracking-wide text-ink-mute">
+                    <th className="px-4 py-2.5 text-start">العميل</th>
+                    <th className="px-4 py-2.5 text-start">النوع</th>
+                    <th className="px-4 py-2.5 text-start">التاريخ</th>
+                    <th className="px-4 py-2.5 text-start">الوقت</th>
+                    <th className="px-4 py-2.5 text-start">الرسوم</th>
+                    <th className="px-4 py-2.5 text-start">الحالة</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {sessions.slice(0, 6).map((se) => (
+                    <tr key={se.id} className="transition-colors hover:bg-mint/40">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={se.client} size={32} />
+                          <span className="font-bold text-ink">{se.client}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-ink-soft">{se.type}</td>
+                      <td className="px-4 py-3 text-ink-soft">{fmtDate(se.date)}</td>
+                      <td className="px-4 py-3 text-ink-soft">{se.time}</td>
+                      <td className="px-4 py-3 font-semibold text-ink">{num(se.fee)} ر.س</td>
+                      <td className="px-4 py-3">
+                        <Badge tone={SESSION_TONE[se.status]} dot>{se.status}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {sessions.length > 6 && (
             <p className="px-4 pb-4 text-xs font-semibold text-ink-mute">
               + {sessions.length - 6} جلسات أخرى
@@ -248,23 +306,33 @@ export default function SpecialistDetails() {
           <h3 className="text-base font-extrabold text-ink">آراء العملاء</h3>
           <Badge tone="mint">{num(reviews.length)} تقييم حديث</Badge>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {reviews.map((r) => (
-            <Card key={r.id} className="p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-pop">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar name={r.client} size={40} />
-                  <div>
-                    <p className="text-sm font-bold text-ink">{r.client}</p>
-                    <p className="text-xs text-ink-mute">{fmtDate(r.date)}</p>
+        {reviews.length === 0 ? (
+          <Card className="flex flex-col items-center px-6 py-14 text-center">
+            <div className="grid size-16 place-items-center rounded-3xl bg-mint text-primary">
+              <Icon name="star" size={30} strokeWidth={1.6} />
+            </div>
+            <p className="mt-4 text-sm font-bold text-ink">لا توجد تقييمات بعد</p>
+            <p className="mt-1 text-xs text-ink-mute">ستظهر تقييمات العملاء هنا فور إضافتها.</p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {reviews.map((r) => (
+              <Card key={r.id} className="p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-pop">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={r.client} size={40} />
+                    <div>
+                      <p className="text-sm font-bold text-ink">{r.client}</p>
+                      <p className="text-xs text-ink-mute">{fmtDate(r.date)}</p>
+                    </div>
                   </div>
+                  <Stars rating={r.rating} size={13} />
                 </div>
-                <Stars rating={r.rating} size={13} />
-              </div>
-              <p className="mt-3.5 text-sm leading-relaxed text-ink-soft">{r.comment}</p>
-            </Card>
-          ))}
-        </div>
+                <p className="mt-3.5 text-sm leading-relaxed text-ink-soft">{r.comment}</p>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* completion note */}

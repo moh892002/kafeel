@@ -1,50 +1,55 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
-import { NOTIFICATIONS, NOTIF_TYPES } from '../data/notifications'
-import { num } from '../utils/format'
-
-const TYPE_ICON = { الحجز: 'calendar', الدفع: 'banknote', التقييم: 'star', الأخصائي: 'user-check', النظام: 'settings' }
-const TYPE_TONE = { الحجز: 'teal', الدفع: 'soft', التقييم: 'warning', الأخصائي: 'mint', النظام: 'neutral' }
-const TYPE_TILE = {
-  الحجز: 'bg-mint text-primary',
-  الدفع: 'bg-accent/15 text-accent-soft',
-  التقييم: 'bg-amber-100 text-amber-600',
-  الأخصائي: 'bg-emerald-100 text-emerald-600',
-  النظام: 'bg-gray-100 text-ink-soft',
-}
-
-const timeAgo = (iso) => {
-  const diff = Date.now() - new Date(iso).getTime()
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return 'الآن'
-  if (min < 60) return `منذ ${min} دقيقة`
-  const h = Math.floor(min / 60)
-  if (h < 24) return `منذ ${h} ساعة`
-  const d = Math.floor(h / 24)
-  return d === 1 ? 'منذ يوم' : `منذ ${d} أيام`
-}
+import { api } from '../api'
+import { options, useMeta } from '../meta'
+import { num, timeAgo } from '../utils/format'
+import { TYPE_ICON, TYPE_TILE, TYPE_TONE } from '../utils/notificationStyle'
 
 /* ---------- Page ---------- */
 export default function Notifications() {
-  const [items, setItems] = useState(NOTIFICATIONS)
+  const meta = useMeta()
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [filter, setFilter] = useState('الكل')
   const [selected, setSelected] = useState(null)
 
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const list = await api.notifications()
+        if (cancelled) return
+        setItems(list ?? [])
+        setLoading(false)
+      } catch (e) {
+        if (cancelled) return
+        setError(e.message)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const typeLabels = options(meta, 'notificationType')
   const counts = useMemo(() => {
     const c = { 'الكل': items.length, 'غير مقروء': 0 }
-    NOTIF_TYPES.filter((t) => t !== 'الكل').forEach((t) => {
+    typeLabels.forEach((t) => {
       c[t] = 0
     })
     items.forEach((n) => {
       if (!n.read) c['غير مقروء'] += 1
-      c[n.type] += 1
+      c[n.type] = (c[n.type] ?? 0) + 1
     })
     return c
-  }, [items])
+  }, [items, typeLabels])
 
   const rows = useMemo(() => {
     if (filter === 'الكل') return items
@@ -52,14 +57,62 @@ export default function Notifications() {
     return items.filter((n) => n.type === filter)
   }, [items, filter])
 
-  const markAllRead = () => setItems((prev) => prev.map((n) => ({ ...n, read: true })))
-
-  const open = (n) => {
-    if (!n.read) setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)))
-    setSelected(n)
+  const markAllRead = async () => {
+    const prev = items
+    setItems((p) => p.map((n) => ({ ...n, read: true })))
+    try {
+      await api.markAllNotificationsRead()
+    } catch {
+      setItems(prev) // revert on failure
+    }
   }
 
-  const remove = (id) => setItems((prev) => prev.filter((n) => n.id !== id))
+  const open = async (n) => {
+    setSelected(n)
+    if (n.read) return
+    setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)))
+    try {
+      await api.markNotificationRead(n.id, true)
+    } catch {
+      /* keep the optimistic local state */
+    }
+  }
+
+  const remove = async (id) => {
+    const prev = items
+    setItems((p) => p.filter((n) => n.id !== id))
+    try {
+      await api.deleteNotification(id)
+    } catch {
+      setItems(prev)
+    }
+  }
+
+  if (error) {
+    return (
+      <Card className="flex flex-col items-center px-6 py-20 text-center">
+        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
+          <Icon name="x" size={38} strokeWidth={1.6} />
+        </div>
+        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الإشعارات</h3>
+        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
+        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
+          إعادة المحاولة
+        </Button>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-primary">
+        <div className="flex items-center gap-3 text-sm font-bold">
+          <Icon name="loader" size={18} className="animate-spin" />
+          جاري تحميل الإشعارات...
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -76,7 +129,7 @@ export default function Notifications() {
 
       {/* Stat strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {['الكل', 'غير مقروء', ...NOTIF_TYPES.slice(1)].map((s) => (
+        {['الكل', 'غير مقروء', ...typeLabels].map((s) => (
           <button
             key={s}
             onClick={() => setFilter(s)}
