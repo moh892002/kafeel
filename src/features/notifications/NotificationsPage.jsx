@@ -1,42 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Icon from '../components/ui/Icon'
-import Modal from '../components/ui/Modal'
-import { api } from '../api'
-import { options, useMeta } from '../meta'
-import { num, timeAgo } from '../utils/format'
-import { TYPE_ICON, TYPE_TILE, TYPE_TONE } from '../utils/notificationStyle'
+import { useMemo, useState } from 'react'
+import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Icon from '@/components/ui/Icon'
+import PageHeader from '@/components/ui/PageHeader'
+import StatStrip from '@/components/ui/StatStrip'
+import { api } from '@/app/api'
+import useAsync from '@/hooks/useAsync'
+import NotificationViewModal from './components/NotificationViewModal'
+import { options, useMeta } from '@/app/meta'
+import { num, timeAgo } from '@/utils/format'
+import { TYPE_ICON, TYPE_TILE, TYPE_TONE } from '@/utils/notificationStyle'
 
 /* ---------- Page ---------- */
 export default function Notifications() {
   const meta = useMeta()
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [filter, setFilter] = useState('الكل')
   const [selected, setSelected] = useState(null)
 
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const list = await api.notifications()
-        if (cancelled) return
-        setItems(list ?? [])
-        setLoading(false)
-      } catch (e) {
-        if (cancelled) return
-        setError(e.message)
-        setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { data: items, setData: setItems, loading, error, reload } = useAsync(
+    () => api.notifications().then((l) => l ?? []),
+    [],
+    [],
+  )
 
   const typeLabels = options(meta, 'notificationType')
   const counts = useMemo(() => {
@@ -90,74 +77,59 @@ export default function Notifications() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الإشعارات</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الإشعارات"
+        message={error}
+        onRetry={reload}
+      />
     )
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل الإشعارات...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل الإشعارات..."
+      />
     )
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">إشعارات النظام</h2>
-          <p className="mt-1 text-sm text-ink-soft">أحدث الإشعارات عن الحجوزات والمدفوعات والتقييمات</p>
-        </div>
-        <Button variant="outline" icon={<Icon name="check" size={17} />} onClick={markAllRead} disabled={counts['غير مقروء'] === 0}>
-          تعيين الكل كمقروء
-        </Button>
-      </div>
+      <PageHeader
+        title="إشعارات النظام"
+        subtitle="أحدث الإشعارات عن الحجوزات والمدفوعات والتقييمات"
+        actions={
+          <Button variant="outline" icon={<Icon name="check" size={17} />} onClick={markAllRead} disabled={counts['غير مقروء'] === 0}>
+            تعيين الكل كمقروء
+          </Button>
+        }
+      />
 
       {/* Stat strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {['الكل', 'غير مقروء', ...typeLabels].map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`rounded-2xl border px-4 py-3.5 text-start transition-all hover:-translate-y-0.5 ${
-              filter === s
-                ? 'border-primary bg-primary text-white shadow-[0_6px_16px_rgba(7,94,102,0.35)]'
-                : 'border-line bg-card shadow-card hover:shadow-pop'
-            }`}
-          >
-            <p className={`text-2xl font-extrabold ${filter === s ? 'text-white' : s === 'غير مقروء' ? 'text-amber-500' : 'text-ink'}`}>
-              {num(counts[s] ?? 0)}
-            </p>
-            <p className={`text-xs font-semibold ${filter === s ? 'text-white/70' : s === 'غير مقروء' ? 'text-amber-500' : 'text-ink-mute'}`}>
-              {s === 'الكل' ? 'إجمالي الإشعارات' : s === 'غير مقروء' ? 'إشعار غير مقروء' : s}
-            </p>
-          </button>
-        ))}
-      </div>
+      <StatStrip
+        cols="sm:grid-cols-3 xl:grid-cols-6"
+        active={filter}
+        onSelect={setFilter}
+        items={['الكل', 'غير مقروء', ...typeLabels].map((s) => ({
+          key: s,
+          value: num(counts[s] ?? 0),
+          label: s === 'الكل' ? 'إجمالي الإشعارات' : s === 'غير مقروء' ? 'إشعار غير مقروء' : s,
+          valueClass: s === 'غير مقروء' ? 'text-amber-500' : undefined,
+          labelClass: s === 'غير مقروء' ? 'text-amber-500' : undefined,
+        }))}
+      />
 
       {/* List */}
       {rows.length === 0 ? (
-        <Card className="flex flex-col items-center px-6 py-20 text-center">
-          <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-            <Icon name="inbox" size={38} strokeWidth={1.6} />
-          </div>
-          <h3 className="mt-5 text-lg font-extrabold text-ink">لا توجد إشعارات</h3>
-          <p className="mt-1.5 max-w-sm text-sm text-ink-soft">ستظهر هنا جميع الإشعارات الجديدة فور حدوثها.</p>
-        </Card>
+        <PageState
+          mode="empty"
+          icon="inbox"
+          title="لا توجد إشعارات"
+          message="ستظهر هنا جميع الإشعارات الجديدة فور حدوثها."
+        />
       ) : (
         <Card className="overflow-hidden">
           <ul className="divide-y divide-line">
@@ -195,19 +167,7 @@ export default function Notifications() {
       )}
 
       {/* Detail modal */}
-      {selected && (
-        <Modal open onClose={() => setSelected(null)} title={selected.title} subtitle={timeAgo(selected.time)} size="sm">
-          <div className="flex items-start gap-3">
-            <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${TYPE_TILE[selected.type]}`}>
-              <Icon name={TYPE_ICON[selected.type]} size={20} />
-            </span>
-            <div>
-              <Badge tone={TYPE_TONE[selected.type]} compact>{selected.type}</Badge>
-              <p className="mt-2 text-sm leading-relaxed text-ink-soft">{selected.body}</p>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {selected && <NotificationViewModal notification={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }

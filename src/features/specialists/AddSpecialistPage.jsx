@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Icon from '../components/ui/Icon'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { EXPERIENCE_OPTIONS, QUALIFICATION_OPTIONS, SPECIALTY_OPTIONS, TITLE_OPTIONS } from '../data/specialists'
-import { options, useMeta } from '../meta'
-import { api } from '../api'
+import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Icon from '@/components/ui/Icon'
+import FormError from '@/components/ui/FormError'
+import SuccessCard from '@/components/ui/SuccessCard'
+import PageHeader from '@/components/ui/PageHeader'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import { EXPERIENCE_OPTIONS, QUALIFICATION_OPTIONS, SPECIALTY_OPTIONS, TITLE_OPTIONS } from '@/features/specialists/constants'
+import { options, useMeta } from '@/app/meta'
+import { api } from '@/app/api'
 
 const STEPS = [
   { id: 1, title: 'البيانات الشخصية', desc: 'المعلومات الأساسية عن الأخصائي', icon: 'user' },
@@ -146,29 +149,30 @@ export default function AddSpecialist() {
   /* ---------- Success screen ---------- */
   if (submitted) {
     return (
-      <Card className="flex flex-col items-center px-6 py-16 text-center">
-        <div className="grid size-24 animate-pop-in place-items-center rounded-full bg-mint text-primary">
-          <Icon name="check" size={44} strokeWidth={2.4} />
-        </div>
-        <h2 className="mt-6 text-2xl font-extrabold text-ink">تم إرسال الطلب بنجاح 🎉</h2>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
-          شكراً لك، تم استلام طلب إضافة الأخصائي <span className="font-extrabold text-primary">{form.fullName}</span>.
-          سيتم مراجعة المستندات والمؤهلات خلال 24 ساعة عمل، وسيتم إشعارك عند الموافقة.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2.5">
-          <Button onClick={() => navigate('/specialists')}>العودة لإدارة الأخصائيين</Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setForm(initialForm)
-              setStep(0)
-              setSubmitted(false)
-            }}
-          >
-            إضافة أخصائي آخر
-          </Button>
-        </div>
-      </Card>
+      <SuccessCard
+        title="تم إرسال الطلب بنجاح 🎉"
+        message={
+          <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
+            شكراً لك، تم استلام طلب إضافة الأخصائي <span className="font-extrabold text-primary">{form.fullName}</span>.
+            سيتم مراجعة المستندات والمؤهلات خلال 24 ساعة عمل، وسيتم إشعارك عند الموافقة.
+          </p>
+        }
+        actions={
+          <>
+            <Button onClick={() => navigate('/specialists')}>العودة لإدارة الأخصائيين</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setForm(initialForm)
+                setStep(0)
+                setSubmitted(false)
+              }}
+            >
+              إضافة أخصائي آخر
+            </Button>
+          </>
+        }
+      />
     )
   }
 
@@ -177,31 +181,15 @@ export default function AddSpecialist() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-medium text-ink-mute">إدارة الأخصائيين</p>
-          <h2 className="text-2xl font-extrabold text-ink">إضافة أخصائي جديد</h2>
-          <p className="mt-1 text-sm text-ink-soft">أكمل خطوات النموذج لإضافة أخصائي جديد إلى المنصة</p>
-        </div>
-        <Badge tone="teal" dot>نموذج من 4 خطوات</Badge>
-      </div>
+      <PageHeader
+        title="إضافة أخصائي جديد"
+        subtitle="أكمل خطوات النموذج لإضافة أخصائي جديد إلى المنصة"
+        kicker="إدارة الأخصائيين"
+        actions={<Badge tone="teal" dot>نموذج من 4 خطوات</Badge>}
+      />
 
       {/* Submit error */}
-      {error && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-          <span className="flex items-center gap-2">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </span>
-          <button
-            onClick={() => setError(null)}
-            aria-label="إغلاق"
-            className="grid size-6 place-items-center rounded-md transition-colors hover:bg-red-100"
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {error && <FormError rounded="2xl" onDismiss={() => setError(null)}>{error}</FormError>}
 
       {/* Stepper */}
       <Card className="px-5 py-4">

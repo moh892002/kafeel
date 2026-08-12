@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import Button from '../components/ui/Button'
-import Card, { CardHeader } from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import Modal from '../components/ui/Modal'
-import { Input, Select } from '../components/ui/Input'
-import { api } from '../api'
-import { options, useMeta } from '../meta'
-import { fmtDate, num } from '../utils/format'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import Icon from '@/components/ui/Icon'
+import Notice from '@/components/ui/Notice'
+import FormError from '@/components/ui/FormError'
+import PageHeader from '@/components/ui/PageHeader'
+import ConfirmDeleteModal from '@/components/ui/ConfirmDeleteModal'
+import { api } from '@/app/api'
+import { options, useMeta } from '@/app/meta'
+import { fmtDate, num } from '@/utils/format'
+import LessonFormModal from '@/features/courses/components/LessonFormModal'
+import EnrollModal from '@/features/courses/components/EnrollModal'
 
 const STATUS_TONE = { منشورة: 'success', مسودة: 'neutral' }
 const LEVEL_TONE = { مبتدئ: 'success', متوسط: 'warning', متقدم: 'danger' }
@@ -17,175 +22,6 @@ const ENROLL_SELECT_TONE = {
   'مكتمل الدفع': 'border-emerald-200 bg-emerald-50 text-emerald-700',
   'بانتظار الدفع': 'border-amber-200 bg-amber-50 text-amber-700',
   مسترد: 'border-red-200 bg-red-50 text-red-600',
-}
-
-/* ---------- Add / edit lesson modal ---------- */
-function LessonModal({ lesson, courseId, onClose, onSaved }) {
-  const editing = Boolean(lesson)
-  const [form, setForm] = useState({
-    title: lesson?.title ?? '',
-    minutes: lesson?.minutes ?? 30,
-    preview: lesson?.preview ?? false,
-  })
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const set = (key) => (e) => {
-    setForm((f) => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
-    setError(null)
-  }
-
-  const save = async () => {
-    if (!form.title.trim()) {
-      setError('يرجى إدخال عنوان الدرس')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const payload = { title: form.title.trim(), minutes: Number(form.minutes) || 0, preview: form.preview }
-      if (editing) {
-        await api.updateLesson(courseId, lesson.id, payload)
-      } else {
-        await api.addLesson(courseId, payload)
-      }
-      onSaved()
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={editing ? 'تعديل الدرس' : 'إضافة درس'}
-      subtitle={editing ? 'قم بتحديث بيانات هذا الدرس' : 'أضف درساً جديداً إلى محتويات الدورة'}
-      size="sm"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            إلغاء
-          </Button>
-          <Button
-            onClick={save}
-            disabled={submitting}
-            icon={submitting ? <Icon name="loader" size={16} className="animate-spin" /> : <Icon name="check" size={16} />}
-          >
-            {submitting ? 'جارٍ الحفظ...' : editing ? 'حفظ التعديلات' : 'إضافة الدرس'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-        <Input id="ls-title" label="عنوان الدرس *" value={form.title} onChange={set('title')} placeholder="مثال: مقدمة في العلاج المعرفي السلوكي" />
-        <div className="grid grid-cols-2 gap-4">
-          <Input id="ls-minutes" label="المدة (بالدقائق)" type="number" min="0" value={form.minutes} onChange={set('minutes')} />
-          <div className="flex items-end pb-1">
-            <label className="flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-ink">
-              <input type="checkbox" checked={form.preview} onChange={set('preview')} className="size-4 accent-primary" />
-              درس معاينة مجانية
-            </label>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Enroll client modal ---------- */
-function EnrollModal({ course, onClose, onSaved }) {
-  const meta = useMeta()
-  const methods = options(meta, 'paymentMethod')
-  const [form, setForm] = useState({ clientName: '', method: methods[0] ?? 'مدى', date: '' })
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  // capacity 0 means unlimited seats — never show a (misleading) seat count then.
-  const unlimited = Number(course.capacity) <= 0
-  const seats = unlimited ? null : Math.max(0, course.capacity - course.enrolled)
-
-  const save = async () => {
-    if (!form.clientName.trim()) {
-      setError('يرجى إدخال اسم العميل')
-      return
-    }
-    if (!unlimited && seats === 0) {
-      setError('الدورة ممتلئة، تعذر تسجيل مشارك إضافي')
-      return
-    }
-    setSubmitting(true)
-    try {
-      await api.enrollCourse(course.id, {
-        clientName: form.clientName.trim(),
-        method: form.method,
-        date: form.date || null,
-      })
-      onSaved()
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="تسجيل عميل في الدورة"
-      subtitle={`«${course.title}» — ${unlimited ? 'مقاعد غير محدودة' : `${seats} مقعد متبقي`}`}
-      size="sm"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            إلغاء
-          </Button>
-          <Button
-            onClick={save}
-            disabled={submitting}
-            icon={submitting ? <Icon name="loader" size={16} className="animate-spin" /> : <Icon name="check" size={16} />}
-          >
-            {submitting ? 'جارٍ التسجيل...' : 'تأكيد التسجيل'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-        <Input
-          id="en-name"
-          label="اسم العميل *"
-          placeholder="مثال: أحمد الشمري"
-          value={form.clientName}
-          onChange={(e) => {
-            setForm((f) => ({ ...f, clientName: e.target.value }))
-            setError(null)
-          }}
-        />
-        <div className="grid grid-cols-2 gap-4">
-          <Select id="en-method" label="وسيلة الدفع" icon="wallet" value={form.method} onChange={(e) => setForm((f) => ({ ...f, method: e.target.value }))}>
-            {methods.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </Select>
-          <Input id="en-date" label="تاريخ التسجيل" type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-        </div>
-      </div>
-    </Modal>
-  )
 }
 
 export default function CourseDetails() {
@@ -250,12 +86,10 @@ export default function CourseDetails() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل تفاصيل الدورة...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل تفاصيل الدورة..."
+      />
     )
   }
 
@@ -263,31 +97,27 @@ export default function CourseDetails() {
   // show the error card, not the "not found" one (course stays null on both).
   if (notFound) {
     return (
-      <Card className="flex flex-col items-center px-6 py-24 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-          <Icon name="book" size={38} strokeWidth={1.6} />
-        </div>
-        <h2 className="mt-6 text-2xl font-extrabold text-ink">الدورة غير موجودة</h2>
-        <p className="mt-2 max-w-md text-sm text-ink-soft">لم نتمكن من العثور على هذه الدورة، قد تكون محذوفة.</p>
+      <PageState
+        mode="notFound"
+        icon="book"
+        title="الدورة غير موجودة"
+        message="لم نتمكن من العثور على هذه الدورة، قد تكون محذوفة."
+      >
         <Button variant="outline" className="mt-6" icon={<Icon name="chevron-right" size={16} />} onClick={() => navigate('/courses')}>
           العودة لقائمة الدورات
         </Button>
-      </Card>
+      </PageState>
     )
   }
 
   if (error && !course) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الدورة</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الدورة"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
@@ -360,56 +190,27 @@ export default function CourseDetails() {
   return (
     <div className="space-y-6">
       {/* Delete error notice */}
-      {deleteError && (
-        <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-          <Icon name="x" size={16} strokeWidth={2.4} />
-          {deleteError}
-        </div>
-      )}
+      {deleteError && <FormError rounded="2xl">{deleteError}</FormError>}
 
       {/* Action notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === 'error'
-              ? 'border-red-200 bg-red-50 text-red-600'
-              : 'border-accent-soft/30 bg-mint text-primary'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
-            {notice.text}
-          </span>
-          <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       {/* Breadcrumb */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/courses')}
-            aria-label="رجوع"
-            className="grid size-10 place-items-center rounded-xl border border-line bg-white text-ink-soft transition-colors hover:bg-mint hover:text-primary"
-          >
-            <Icon name="chevron-right" size={20} />
-          </button>
-          <div>
-            <p className="text-[11px] font-medium text-ink-mute">الدورات</p>
-            <h2 className="text-2xl font-extrabold text-ink">تفاصيل الدورة</h2>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button variant="outline" icon={<Icon name="edit" size={17} />} onClick={() => navigate(`/courses/${course.id}/edit`)}>
-            تعديل الدورة
-          </Button>
-          <Button variant="danger" icon={<Icon name="trash" size={17} />} onClick={() => setConfirmOpen(true)}>
-            حذف
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="تفاصيل الدورة"
+        kicker="الدورات"
+        backTo="/courses"
+        actions={
+          <>
+            <Button variant="outline" icon={<Icon name="edit" size={17} />} onClick={() => navigate(`/courses/${course.id}/edit`)}>
+              تعديل الدورة
+            </Button>
+            <Button variant="danger" icon={<Icon name="trash" size={17} />} onClick={() => setConfirmOpen(true)}>
+              حذف
+            </Button>
+          </>
+        }
+      />
 
       {/* Banner */}
       <Card className="overflow-hidden">
@@ -642,7 +443,7 @@ export default function CourseDetails() {
 
       {/* Lesson add / edit */}
       {lessonModal && (
-        <LessonModal
+        <LessonFormModal
           lesson={lessonModal.lesson}
           courseId={course.id}
           onClose={() => setLessonModal(null)}
@@ -671,79 +472,43 @@ export default function CourseDetails() {
       )}
 
       {/* Lesson / enrollment delete confirm */}
-      <Modal
+      <ConfirmDeleteModal
         open={deleteTarget != null}
-        onClose={() => setDeleteTarget(null)}
         title="تأكيد الحذف"
-        subtitle="لا يمكن التراجع عن هذا الإجراء"
-        size="sm"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={removing}>
-              إلغاء
-            </Button>
-            <Button
-              variant="danger"
-              onClick={confirmDeleteTarget}
-              disabled={removing}
-              icon={removing ? <Icon name="loader" size={16} className="animate-spin" /> : <Icon name="trash" size={16} />}
-            >
-              {removing ? 'جارٍ الحذف...' : 'حذف'}
-            </Button>
-          </>
+        confirmLabel="حذف"
+        busy={removing}
+        message={
+          deleteTarget?.kind === 'lesson' ? (
+            <>
+              سيتم حذف الدرس <span className="font-extrabold text-ink">«{deleteTarget.item.title}»</span> من محتويات
+              الدورة نهائياً.
+            </>
+          ) : (
+            <>
+              سيتم حذف تسجيل <span className="font-extrabold text-ink">«{deleteTarget?.item?.clientName}»</span> وإخلاء
+              مقعده في الدورة.
+            </>
+          )
         }
-      >
-        <div className="flex items-start gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
-            <Icon name="trash" size={20} />
-          </span>
-          <p className="text-sm leading-relaxed text-ink-soft">
-            {deleteTarget?.kind === 'lesson' ? (
-              <>
-                سيتم حذف الدرس <span className="font-extrabold text-ink">«{deleteTarget.item.title}»</span> من محتويات
-                الدورة نهائياً.
-              </>
-            ) : (
-              <>
-                سيتم حذف تسجيل <span className="font-extrabold text-ink">«{deleteTarget?.item?.clientName}»</span> وإخلاء
-                مقعده في الدورة.
-              </>
-            )}
-          </p>
-        </div>
-      </Modal>
+        onConfirm={confirmDeleteTarget}
+        onClose={() => setDeleteTarget(null)}
+      />
 
       {/* Delete course confirm */}
-      <Modal
+      <ConfirmDeleteModal
         open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
         title="حذف الدورة"
-        subtitle="لا يمكن التراجع عن هذا الإجراء"
-        size="sm"
-        footer={
+        confirmLabel="حذف نهائي"
+        busy={deleting}
+        message={
           <>
-            <Button variant="ghost" onClick={() => setConfirmOpen(false)}>إلغاء</Button>
-            <Button
-              variant="danger"
-              icon={<Icon name="trash" size={16} />}
-              onClick={confirmDelete}
-              disabled={deleting}
-            >
-              {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex items-start gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
-            <Icon name="trash" size={20} />
-          </span>
-          <p className="text-sm leading-relaxed text-ink-soft">
             هل أنت متأكد من حذف الدورة <span className="font-extrabold text-ink">«{course.title}»</span>؟
             سيتم حذف جميع بياناتها وبيانات المسجلين فيها نهائياً.
-          </p>
-        </div>
-      </Modal>
+          </>
+        }
+        onConfirm={confirmDelete}
+        onClose={() => setConfirmOpen(false)}
+      />
     </div>
   )
 }

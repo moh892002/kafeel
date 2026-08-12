@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import Icon from '../ui/Icon'
-import { NAV_SECTIONS } from '../../data/nav'
-import { useAuth } from '../../useAuth'
+import Icon from '@/components/ui/Icon'
+import { NAV_SECTIONS } from '@/app/nav'
+import { useAuth } from '@/features/auth/useAuth'
 
 export default function Sidebar({ open, onClose }) {
   const navigate = useNavigate()

@@ -1,17 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 // Mock only the network-touching auth calls; keep the real TOKEN_KEY export so
 // session restoration runs under the app's actual storage key.
-vi.mock('./api', async (importOriginal) => {
+vi.mock('@/app/api', async (importOriginal) => {
   const actual = await importOriginal()
-  return { ...actual, api: { ...actual.api, login: vi.fn(), me: vi.fn() } }
+  return { ...actual, api: { ...actual.api, login: vi.fn(), me: vi.fn(), updateProfile: vi.fn() } }
 })
 
-import { api, TOKEN_KEY } from './api'
+import { api, TOKEN_KEY } from '@/app/api'
 import { AuthProvider, RequireAuth } from './auth'
-import Login from './pages/Login'
+import { useAuth } from './useAuth'
+import Login from './LoginPage'
+
+// Exposes the auth context so a test can trigger and inspect updateProfile.
+function ContextProbe() {
+  const { admin, updateProfile } = useAuth()
+  return (
+    <div>
+      <span data-testid="ctx-admin-name">{admin?.name ?? '(none)'}</span>
+      <span data-testid="ctx-admin-email">{admin?.email ?? '(none)'}</span>
+      <button onClick={() => updateProfile('الاسم الجديد', 'new@kafeel.sa')}>UPDATE</button>
+    </div>
+  )
+}
 
 const SPECIALISTS_MARKER = 'صفحة المختصين'
 const ADMIN = { email: 'admin@kafeel.sa', name: 'المدير' }
@@ -50,6 +63,35 @@ function renderProtected() {
     </AuthProvider>,
   )
 }
+
+describe('AuthProvider.updateProfile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    localStorage.setItem(TOKEN_KEY, 'jwt-old')
+    api.me.mockResolvedValue(ADMIN)
+  })
+
+  it('stores the re-issued token and refreshes the admin profile in context', async () => {
+    api.updateProfile.mockResolvedValue({
+      token: 'jwt-new',
+      email: 'new@kafeel.sa',
+      name: 'الاسم الجديد',
+    })
+    render(
+      <AuthProvider>
+        <ContextProbe />
+      </AuthProvider>,
+    )
+
+    fireEvent.click(await screen.findByText('UPDATE'))
+
+    await waitFor(() => expect(api.updateProfile).toHaveBeenCalledWith('الاسم الجديد', 'new@kafeel.sa'))
+    await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBe('jwt-new'))
+    expect(screen.getByTestId('ctx-admin-name')).toHaveTextContent('الاسم الجديد')
+    expect(screen.getByTestId('ctx-admin-email')).toHaveTextContent('new@kafeel.sa')
+  })
+})
 
 describe('RequireAuth', () => {
   beforeEach(() => {

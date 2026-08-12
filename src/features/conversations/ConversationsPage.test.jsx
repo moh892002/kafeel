@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 // not use meta.js, so no cache pre-seeding is needed here. The last three mocks
 // (clients/specialists/createConversation) serve the NewConversationModal —
 // they define the module shape even though this suite never opens that modal.
-vi.mock('../api', () => ({
+vi.mock('@/app/api', () => ({
   api: {
     conversations: vi.fn(),
     conversation: vi.fn(),
@@ -17,8 +17,8 @@ vi.mock('../api', () => ({
   },
 }))
 
-import { api } from '../api'
-import Conversations from './Conversations'
+import { api } from '@/app/api'
+import Conversations from './ConversationsPage'
 
 const specialist = { id: 1, title: 'د.', name: 'خالد السالم', specialty: 'استشاري نفسي' }
 

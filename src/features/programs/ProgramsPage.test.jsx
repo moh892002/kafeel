@@ -2,8 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 // Mock the API client so the page never touches the network. The mock is shared
-// with meta.js (it imports { api } from './api'), so ensureMeta can be pre-seeded.
-vi.mock('../api', () => ({
+// with meta.js (it imports { api } from '@/app/api'), so ensureMeta can be pre-seeded.
+vi.mock('@/app/api', () => ({
   api: {
     programs: vi.fn(),
     specialists: vi.fn(),
@@ -11,13 +11,16 @@ vi.mock('../api', () => ({
     updateProgramStatus: vi.fn(),
     deleteProgram: vi.fn(),
     enrollProgram: vi.fn(),
+    programEnrollments: vi.fn(),
+    updateProgramEnrollmentStatus: vi.fn(),
+    deleteProgramEnrollment: vi.fn(),
     meta: vi.fn(),
   },
 }))
 
-import { api } from '../api'
-import { ensureMeta } from '../meta'
-import Programs from './Programs'
+import { api } from '@/app/api'
+import { ensureMeta } from '@/app/meta'
+import Programs from './ProgramsPage'
 
 const META = {
   programStatus: ['مفتوح', 'مكتمل', 'معلق'],
@@ -57,6 +60,7 @@ describe('Programs page', () => {
     api.meta.mockResolvedValue(META)
     api.programs.mockResolvedValue([openProgram])
     api.specialists.mockResolvedValue([instructor])
+    api.programEnrollments.mockResolvedValue([])
   })
 
   it('renders the fetched programs with their instructor', async () => {

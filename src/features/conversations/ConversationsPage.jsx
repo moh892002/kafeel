@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import Modal from '../components/ui/Modal'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { api } from '../api'
+import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import Icon from '@/components/ui/Icon'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import { Input } from '@/components/ui/Input'
+import { api } from '@/app/api'
+import NewConversationModal from '@/features/conversations/components/NewConversationModal'
 
 const fmtTime = (t) => {
   const d = new Date(t)
@@ -23,130 +26,6 @@ const timeAgo = (iso) => {
   if (h < 24) return `قبل ${h} س`
   const d = Math.floor(h / 24)
   return `قبل ${d} يوم`
-}
-
-/* ---------- New conversation modal ---------- */
-function NewConversationModal({ onClose, onCreated }) {
-  const [clients, setClients] = useState([])
-  const [specialists, setSpecialists] = useState([])
-  const [ready, setReady] = useState(false)
-  const [form, setForm] = useState({ clientName: '', specialistId: '', message: '' })
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    Promise.allSettled([api.clients(), api.specialists()]).then((results) => {
-      if (cancelled) return
-      // allSettled keeps whichever reference list loaded — a failed fetch must not hide the other.
-      if (results[0].status === 'fulfilled') setClients(results[0].value ?? [])
-      if (results[1].status === 'fulfilled') setSpecialists(results[1].value ?? [])
-      setReady(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const set = (key) => (e) => {
-    setForm((f) => ({ ...f, [key]: e.target.value }))
-    setError(null)
-  }
-
-  const save = async () => {
-    if (!form.clientName.trim()) {
-      setError('يرجى إدخال اسم العميل')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const created = await api.createConversation({
-        clientName: form.clientName.trim(),
-        specialistId: form.specialistId ? Number(form.specialistId) : null,
-        message: form.message.trim() || null,
-      })
-      onCreated(created)
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="محادثة جديدة"
-      subtitle="ابدأ محادثة مع عميل وإحالتها إلى أخصائي إن لزم"
-      size="md"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            إلغاء
-          </Button>
-          <Button
-            onClick={save}
-            disabled={submitting}
-            icon={submitting ? <Icon name="loader" size={16} className="animate-spin" /> : <Icon name="chat" size={16} />}
-          >
-            {submitting ? 'جارٍ الإنشاء...' : 'إنشاء المحادثة'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-
-        <div>
-          <Input
-            id="nc-client"
-            label="اسم العميل *"
-            list="nc-client-names"
-            placeholder="اختر من القائمة أو اكتب الاسم..."
-            value={form.clientName}
-            onChange={set('clientName')}
-            icon="user"
-          />
-          <datalist id="nc-client-names">
-            {clients.map((c) => (
-              <option key={c.id} value={c.name} />
-            ))}
-          </datalist>
-          <p className="mt-1.5 text-[11px] text-ink-mute">
-            {!ready
-              ? 'جارٍ تحميل قائمة العملاء...'
-              : clients.length > 0
-                ? `يمكنك الاختيار من ${clients.length} عميل مسجل أو كتابة اسم جديد`
-                : 'يمكنك كتابة اسم العميل مباشرة'}
-          </p>
-        </div>
-
-        <Select id="nc-specialist" label="إحالة إلى أخصائي (اختياري)" icon="user-check" value={form.specialistId} onChange={set('specialistId')}>
-          <option value="">بدون إحالة</option>
-          {specialists.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title} {s.name} — {s.specialty}
-            </option>
-          ))}
-        </Select>
-
-        <Textarea
-          id="nc-message"
-          label="موضوع المحادثة (اختياري)"
-          rows={3}
-          maxLength={2000}
-          placeholder="مثال: استفسار عن مواعيد الجلسات المتاحة..."
-          value={form.message}
-          onChange={set('message')}
-        />
-      </div>
-    </Modal>
-  )
 }
 
 export default function Conversations() {
@@ -278,61 +157,39 @@ export default function Conversations() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل المحادثات</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل المحادثات"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل المحادثات...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل المحادثات..."
+      />
     )
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">إدارة المحادثات</h2>
-          <p className="mt-1 text-sm text-ink-soft">متابعة محادثات العملاء مع الأخصائيين والرد على الاستفسارات</p>
-        </div>
-        <Button icon={<Icon name="chat" size={18} strokeWidth={2.4} />} onClick={() => setNewOpen(true)}>
-          محادثة جديدة
-        </Button>
-      </div>
+      <PageHeader
+        title="إدارة المحادثات"
+        subtitle="متابعة محادثات العملاء مع الأخصائيين والرد على الاستفسارات"
+        actions={
+          <Button icon={<Icon name="chat" size={18} strokeWidth={2.4} />} onClick={() => setNewOpen(true)}>
+            محادثة جديدة
+          </Button>
+        }
+      />
 
       {/* Notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === 'error'
-              ? 'border-red-200 bg-red-50 text-red-600'
-              : 'border-accent-soft/30 bg-mint text-primary'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
-            {notice.text}
-          </span>
-          <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
         {/* Conversation list */}
@@ -498,13 +355,12 @@ export default function Conversations() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center">
-              <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-                <Icon name="chat" size={38} strokeWidth={1.6} />
-              </div>
-              <h3 className="mt-5 text-lg font-extrabold text-ink">اختر محادثة للبدء</h3>
-              <p className="mt-1.5 max-w-sm text-sm text-ink-soft">اختر محادثة من القائمة لعرض الرسائل والرد عليها.</p>
-            </div>
+            <PageState
+              mode="empty"
+              icon="chat"
+              title="اختر محادثة للبدء"
+              message="اختر محادثة من القائمة لعرض الرسائل والرد عليها."
+            />
           )}
         </Card>
       </div>

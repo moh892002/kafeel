@@ -3,7 +3,7 @@
  * Arabic labels rendered by the UI are always exactly what the API returns.
  */
 import { useEffect, useState } from 'react'
-import { api } from './api'
+import { api } from '@/app/api'
 
 let promise = null
 let cache = null

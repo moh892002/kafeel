@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Icon from '../components/ui/Icon'
-import CourseCover from '../components/ui/CourseCover'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { api } from '../api'
-import { CATEGORIES, COVERS } from '../data/courses'
-import { options, useMeta } from '../meta'
+import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Icon from '@/components/ui/Icon'
+import FormError from '@/components/ui/FormError'
+import SuccessCard from '@/components/ui/SuccessCard'
+import PageHeader from '@/components/ui/PageHeader'
+import CourseCover from '@/components/ui/CourseCover'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import { api } from '@/app/api'
+import { CATEGORIES, COVERS } from '@/features/courses/constants'
+import { options, useMeta } from '@/app/meta'
 
 const emptyForm = {
   title: '', category: '', level: 'مبتدئ', instructorId: '', price: '', sessions: '4',
@@ -134,96 +138,76 @@ export default function CourseForm() {
   /* ---------- Loading ---------- */
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل بيانات الدورة...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل بيانات الدورة..."
+      />
     )
   }
 
   /* ---------- Not found ---------- */
   if (isEdit && notFound) {
     return (
-      <Card className="flex flex-col items-center px-6 py-24 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-          <Icon name="book" size={38} strokeWidth={1.6} />
-        </div>
-        <h2 className="mt-6 text-2xl font-extrabold text-ink">الدورة غير موجودة</h2>
-        <p className="mt-2 max-w-md text-sm text-ink-soft">لم نتمكن من العثور على هذه الدورة، قد تكون محذوفة.</p>
+      <PageState
+        mode="notFound"
+        icon="book"
+        title="الدورة غير موجودة"
+        message="لم نتمكن من العثور على هذه الدورة، قد تكون محذوفة."
+      >
         <Button variant="outline" className="mt-6" icon={<Icon name="chevron-right" size={16} />} onClick={() => navigate('/courses')}>
           العودة لقائمة الدورات
         </Button>
-      </Card>
+      </PageState>
     )
   }
 
   /* ---------- Error ---------- */
   if (isEdit && error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الدورة</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الدورة"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   /* ---------- Success ---------- */
   if (savedId) {
     return (
-      <Card className="flex flex-col items-center px-6 py-16 text-center">
-        <div className="grid size-24 animate-pop-in place-items-center rounded-full bg-mint text-primary">
-          <Icon name="check" size={44} strokeWidth={2.4} />
-        </div>
-        <h2 className="mt-6 text-2xl font-extrabold text-ink">{isEdit ? 'تم تحديث الدورة بنجاح' : 'تم إنشاء الدورة بنجاح 🎉'}</h2>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
-          الدورة <span className="font-extrabold text-primary">«{form.title}»</span> {isEdit ? 'تم تحديث بياناتها' : 'أصبحت متاحة الآن في نظام المنصة'}.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2.5">
-          <Button onClick={() => navigate(`/courses/${savedId}`)} icon={<Icon name="eye" size={16} />}>
-            عرض الدورة
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/courses')}>العودة للدورات</Button>
-        </div>
-      </Card>
+      <SuccessCard
+        title={isEdit ? 'تم تحديث الدورة بنجاح' : 'تم إنشاء الدورة بنجاح 🎉'}
+        message={
+          <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
+            الدورة <span className="font-extrabold text-primary">«{form.title}»</span> {isEdit ? 'تم تحديث بياناتها' : 'أصبحت متاحة الآن في نظام المنصة'}.
+          </p>
+        }
+        actions={
+          <>
+            <Button onClick={() => navigate(`/courses/${savedId}`)} icon={<Icon name="eye" size={16} />}>
+              عرض الدورة
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/courses')}>العودة للدورات</Button>
+          </>
+        }
+      />
     )
   }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/courses')}
-            aria-label="رجوع"
-            className="grid size-10 place-items-center rounded-xl border border-line bg-white text-ink-soft transition-colors hover:bg-mint hover:text-primary"
-          >
-            <Icon name="chevron-right" size={20} />
-          </button>
-          <div>
-            <p className="text-[11px] font-medium text-ink-mute">الدورات</p>
-            <h2 className="text-2xl font-extrabold text-ink">{isEdit ? 'تعديل الدورة' : 'إضافة دورة جديدة'}</h2>
-          </div>
-        </div>
-        <Badge tone="mint">{isEdit ? 'وضع التعديل' : 'دورة جديدة'}</Badge>
-      </div>
+      <PageHeader
+        title={isEdit ? 'تعديل الدورة' : 'إضافة دورة جديدة'}
+        kicker="الدورات"
+        backTo="/courses"
+        actions={<Badge tone="mint">{isEdit ? 'وضع التعديل' : 'دورة جديدة'}</Badge>}
+      />
 
       <Card>
         <div className="grid gap-5 px-6 py-6 sm:grid-cols-2">
-          {error && (
-            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 sm:col-span-2 animate-slide-in">
-              <Icon name="x" size={16} strokeWidth={2.4} />
-              {error}
-            </div>
-          )}
+          {error && <FormError rounded="xl" className="sm:col-span-2">{error}</FormError>}
           <div className="sm:col-span-2">
             <Input id="c-title" label="عنوان الدورة *" placeholder="مثال: دورة المهارات الأسرية المتقدمة" value={form.title} onChange={set('title')} />
           </div>

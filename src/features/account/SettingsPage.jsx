@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
-import Button from '../components/ui/Button'
-import Card, { CardHeader } from '../components/ui/Card'
-import Icon from '../components/ui/Icon'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import Switch from '../components/ui/Switch'
-import { api } from '../api'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Icon from '@/components/ui/Icon'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import Switch from '@/components/ui/Switch'
+import { api } from '@/app/api'
 
 const field = (setter) => (key) => (e) => setter((prev) => ({ ...prev, [key]: e.target.value }))
 const toggle = (setter) => (key) => () => setter((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -120,61 +123,39 @@ export default function Settings() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الإعدادات</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الإعدادات"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل الإعدادات...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل الإعدادات..."
+      />
     )
   }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">الإعدادات العامة</h2>
-          <p className="mt-1 text-sm text-ink-soft">إعدادات المنصة واللغة والإقليم والمدفوعات والإشعارات</p>
-        </div>
-        <Button icon={<Icon name="check" size={17} />} onClick={save} disabled={saving}>
-          {saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}
-        </Button>
-      </div>
+      <PageHeader
+        title="الإعدادات العامة"
+        subtitle="إعدادات المنصة واللغة والإقليم والمدفوعات والإشعارات"
+        actions={
+          <Button icon={<Icon name="check" size={17} />} onClick={save} disabled={saving}>
+            {saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}
+          </Button>
+        }
+      />
 
       {/* Notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === 'error'
-              ? 'border-red-200 bg-red-50 text-red-600'
-              : 'border-accent-soft/30 bg-mint text-primary'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
-            {notice.text}
-          </span>
-          <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       {/* Platform info */}
       <Card>

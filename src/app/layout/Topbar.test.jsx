@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
-vi.mock('../../api', () => ({
+vi.mock('@/app/api', () => ({
   api: {
     notifications: vi.fn(),
     markNotificationRead: vi.fn(),
@@ -10,11 +10,11 @@ vi.mock('../../api', () => ({
   },
 }))
 
-vi.mock('../../useAuth', () => ({
+vi.mock('@/features/auth/useAuth', () => ({
   useAuth: () => ({ admin: { name: 'عبدالرحمن السالم' }, logout: vi.fn() }),
 }))
 
-import { api } from '../../api'
+import { api } from '@/app/api'
 import Topbar from './Topbar'
 
 const notif = (id, read, title, body) => ({
@@ -109,5 +109,62 @@ describe('Topbar — notification bell', () => {
     expect(left).toBeGreaterThanOrEqual(0)
     expect(top).toBeGreaterThanOrEqual(0)
     expect(left + width).toBeLessThanOrEqual(window.innerWidth)
+  })
+})
+
+describe('Topbar — quick search', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    api.notifications.mockResolvedValue([])
+  })
+
+  const renderWithRoutes = () =>
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        {/* Topbar stays mounted across navigation, like the real AppLayout. */}
+        <Topbar onMenu={vi.fn()} />
+        <Routes>
+          <Route path="/" element={<div>HOME</div>} />
+          <Route path="/transactions" element={<div>TRANSACTIONS PAGE</div>} />
+          <Route path="/sessions" element={<div>SESSIONS PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+  it('lists matching destinations as you type and navigates on click', async () => {
+    renderWithRoutes()
+    fireEvent.change(screen.getByPlaceholderText('بحث سريع...'), { target: { value: 'المعام' } })
+
+    expect(await screen.findByText('المعاملات')).toBeInTheDocument()
+    expect(screen.queryByText('الجلسات')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('المعاملات'))
+    expect(screen.getByText('TRANSACTIONS PAGE')).toBeInTheDocument()
+    // The panel closes and the query clears after navigating.
+    expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument()
+  })
+
+  it('shows the no-results state for a query that matches nothing', async () => {
+    renderWithRoutes()
+    fireEvent.change(screen.getByPlaceholderText('بحث سريع...'), { target: { value: 'zzzz' } })
+
+    expect(await screen.findByText(/لا توجد نتائج مطابقة/)).toBeInTheDocument()
+  })
+
+  it('Enter navigates to the first match, Esc closes the panel without navigating', async () => {
+    renderWithRoutes()
+    const input = screen.getByPlaceholderText('بحث سريع...')
+
+    fireEvent.change(input, { target: { value: 'الجلسات' } })
+    await screen.findByText('الجلسات')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByText('SESSIONS PAGE')).toBeInTheDocument()
+
+    // Reopen, then Esc closes without navigating.
+    fireEvent.change(input, { target: { value: 'المعا' } })
+    await screen.findByTestId('search-panel')
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument()
+    expect(screen.getByText('SESSIONS PAGE')).toBeInTheDocument() // still on sessions
   })
 })

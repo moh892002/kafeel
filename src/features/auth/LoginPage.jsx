@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import Button from '../components/ui/Button'
-import Icon from '../components/ui/Icon'
-import { Input } from '../components/ui/Input'
-import { useAuth } from '../useAuth'
+import Button from '@/components/ui/Button'
+import Icon from '@/components/ui/Icon'
+import FormError from '@/components/ui/FormError'
+import { Input } from '@/components/ui/Input'
+import { useAuth } from '@/features/auth/useAuth'
 
 export default function Login() {
   const { admin, login } = useAuth()
@@ -60,12 +61,7 @@ export default function Login() {
           onSubmit={submit}
           className="space-y-4 rounded-3xl border border-white/20 bg-white p-7 shadow-[0_24px_60px_rgba(4,66,74,0.35)]"
         >
-          {error && (
-            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-              <Icon name="x" size={16} strokeWidth={2.4} />
-              {error}
-            </div>
-          )}
+          {error && <FormError rounded="xl">{error}</FormError>}
           <Input
             label="البريد الإلكتروني"
             id="login-email"

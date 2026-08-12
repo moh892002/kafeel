@@ -1,98 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Icon from '../components/ui/Icon'
-import Modal from '../components/ui/Modal'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { api } from '../api'
-import { FAQ_CATEGORIES } from '../data/faq'
-import { num } from '../utils/format'
+import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Icon from '@/components/ui/Icon'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import StatStrip from '@/components/ui/StatStrip'
+import ConfirmDeleteModal from '@/components/ui/ConfirmDeleteModal'
+import { Input } from '@/components/ui/Input'
+import { api } from '@/app/api'
+import useAsync from '@/hooks/useAsync'
+import { FAQ_CATEGORIES } from '@/features/faq/constants'
+import { num } from '@/utils/format'
+import FaqFormModal from '@/features/faq/components/FaqFormModal'
 
-/* ---------- Add/Edit modal ---------- */
-function FaqFormModal({ initial, onClose, onSave }) {
-  const [form, setForm] = useState(
-    initial ?? { category: FAQ_CATEGORIES[0], question: '', answer: '', pinned: false },
-  )
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const set = (key) => (e) => {
-    setForm((f) => ({ ...f, [key]: e.target.value }))
-    setError(null)
-  }
-
-  const save = async () => {
-    if (!form.question.trim()) {
-      setError('يرجى كتابة السؤال')
-      return
-    }
-    if (!form.answer.trim()) {
-      setError('يرجى كتابة الإجابة')
-      return
-    }
-    setSubmitting(true)
-    try {
-      await onSave({ ...form, question: form.question.trim(), answer: form.answer.trim() })
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={initial ? 'تعديل السؤال' : 'إضافة سؤال جديد'}
-      subtitle="الأسئلة الأكثر تداولاً من قبل العملاء"
-      size="lg"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button icon={<Icon name="check" size={16} />} onClick={save} disabled={submitting}>
-            {submitting ? 'جارٍ الحفظ...' : initial ? 'حفظ التعديلات' : 'إضافة السؤال'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-        <Select label="الفئة" id="faq-category" value={form.category} onChange={set('category')}>
-          {FAQ_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </Select>
-        <Textarea label="السؤال" id="faq-question" rows={2} value={form.question} onChange={set('question')} placeholder="اكتب السؤال هنا..." />
-        <Textarea label="الإجابة" id="faq-answer" rows={4} value={form.answer} onChange={set('answer')} placeholder="اكتب الإجابة الوافية..." />
-        <label className="flex cursor-pointer items-center gap-2.5 text-sm font-bold text-ink">
-          <input
-            type="checkbox"
-            checked={form.pinned}
-            onChange={(e) => setForm((f) => ({ ...f, pinned: e.target.checked }))}
-            className="size-4 accent-primary"
-          />
-          تثبيت السؤال في أعلى القائمة
-        </label>
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Page ---------- */
 export default function Faq() {
-  const [faqs, setFaqs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { data: faqs, setData: setFaqs, loading, error, reload } = useAsync(
+    () => api.faqs().then((l) => l ?? []),
+    [],
+    [],
+  )
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('الكل')
   const [openId, setOpenId] = useState(null)
@@ -108,25 +36,6 @@ export default function Faq() {
     return () => clearTimeout(t)
   }, [notice])
 
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const list = await api.faqs()
-        if (cancelled) return
-        setFaqs(list ?? [])
-        setLoading(false)
-      } catch (e) {
-        if (cancelled) return
-        setError(e.message)
-        setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const counts = useMemo(() => {
     const c = { 'الكل': faqs.length }
@@ -180,79 +89,51 @@ export default function Faq() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الأسئلة الشائعة</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الأسئلة الشائعة"
+        message={error}
+        onRetry={reload}
+      />
     )
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل الأسئلة الشائعة...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل الأسئلة الشائعة..."
+      />
     )
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">الأسئلة الأكثر تداولاً</h2>
-          <p className="mt-1 text-sm text-ink-soft">إدارة الأسئلة الشائعة التي تظهر للعملاء في مركز المساعدة</p>
-        </div>
-        <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => setAddOpen(true)}>
-          إضافة سؤال جديد
-        </Button>
-      </div>
+      <PageHeader
+        title="الأسئلة الأكثر تداولاً"
+        subtitle="إدارة الأسئلة الشائعة التي تظهر للعملاء في مركز المساعدة"
+        actions={
+          <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => setAddOpen(true)}>
+            إضافة سؤال جديد
+          </Button>
+        }
+      />
 
       {/* Notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === 'error'
-              ? 'border-red-200 bg-red-50 text-red-600'
-              : 'border-accent-soft/30 bg-mint text-primary'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
-            {notice.text}
-          </span>
-          <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       {/* Stat strip */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {['الكل', ...FAQ_CATEGORIES].map((s) => (
-          <button
-            key={s}
-            onClick={() => setCategory(s)}
-            className={`rounded-2xl border px-4 py-3.5 text-start transition-all hover:-translate-y-0.5 ${
-              category === s ? 'border-primary bg-primary text-white shadow-[0_6px_16px_rgba(7,94,102,0.35)]' : 'border-line bg-card shadow-card hover:shadow-pop'
-            }`}
-          >
-            <p className={`text-2xl font-extrabold ${category === s ? 'text-white' : 'text-ink'}`}>{num(counts[s] ?? 0)}</p>
-            <p className={`text-xs font-semibold ${category === s ? 'text-white/70' : 'text-ink-mute'}`}>
-              {s === 'الكل' ? 'إجمالي الأسئلة' : s}
-            </p>
-          </button>
-        ))}
-      </div>
+      <StatStrip
+        cols="lg:grid-cols-5"
+        active={category}
+        onSelect={setCategory}
+        items={['الكل', ...FAQ_CATEGORIES].map((s) => ({
+          key: s,
+          value: num(counts[s] ?? 0),
+          label: s === 'الكل' ? 'إجمالي الأسئلة' : s,
+        }))}
+      />
 
       {/* Search */}
       <Card className="p-4">
@@ -266,16 +147,16 @@ export default function Faq() {
 
       {/* Accordion */}
       {rows.length === 0 ? (
-        <Card className="flex flex-col items-center px-6 py-20 text-center">
-          <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-            <Icon name="help" size={38} strokeWidth={1.6} />
-          </div>
-          <h3 className="mt-5 text-lg font-extrabold text-ink">لا توجد أسئلة مطابقة</h3>
-          <p className="mt-1.5 max-w-sm text-sm text-ink-soft">جرّب تعديل البحث أو الفلاتر، أو أضف سؤالاً جديداً.</p>
+        <PageState
+          mode="empty"
+          icon="help"
+          title="لا توجد أسئلة مطابقة"
+          message="جرّب تعديل البحث أو الفلاتر، أو أضف سؤالاً جديداً."
+        >
           <Button variant="outline" className="mt-5" onClick={() => { setSearch(''); setCategory('الكل') }}>
             إعادة تعيين الفلاتر
           </Button>
-        </Card>
+        </PageState>
       ) : (
         <Card className="overflow-hidden">
           <ul className="divide-y divide-line">
@@ -338,32 +219,19 @@ export default function Faq() {
       {(addOpen || editing) && (
         <FaqFormModal initial={editing} onClose={() => { setAddOpen(false); setEditing(null) }} onSave={save} />
       )}
-      {deleteTarget && (
-        <Modal
-          open
-          onClose={() => setDeleteTarget(null)}
-          title="حذف السؤال"
-          subtitle="لا يمكن التراجع عن هذا الإجراء"
-          size="sm"
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>إلغاء</Button>
-              <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete} disabled={deleting}>
-                {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
-              </Button>
-            </>
-          }
-        >
-          <div className="flex items-start gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
-              <Icon name="trash" size={20} />
-            </span>
-            <p className="text-sm leading-relaxed text-ink-soft">
-              هل أنت متأكد من حذف السؤال <span className="font-extrabold text-ink">«{deleteTarget.question}»</span>؟
-            </p>
-          </div>
-        </Modal>
-      )}
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title="حذف السؤال"
+        confirmLabel="حذف نهائي"
+        busy={deleting}
+        message={
+          <>
+            هل أنت متأكد من حذف السؤال <span className="font-extrabold text-ink">«{deleteTarget?.question}»</span>؟
+          </>
+        }
+        onConfirm={confirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

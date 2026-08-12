@@ -5,14 +5,14 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 // Mock only the network-touching auth calls. Keeping the rest of the module
 // real (via importOriginal) preserves the actual TOKEN_KEY export, so the test
 // asserts token storage under the exact key the app uses.
-vi.mock('../api', async (importOriginal) => {
+vi.mock('@/app/api', async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, api: { ...actual.api, login: vi.fn(), me: vi.fn() } }
 })
 
-import { api, TOKEN_KEY } from '../api'
-import { AuthProvider } from '../auth'
-import Login from './Login'
+import { api, TOKEN_KEY } from '@/app/api'
+import { AuthProvider } from './auth'
+import Login from './LoginPage'
 
 const HOME_MARKER = 'لوحة التحكم الرئيسية'
 

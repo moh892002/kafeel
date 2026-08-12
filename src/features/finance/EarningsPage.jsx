@@ -3,17 +3,17 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import Button from '../components/ui/Button'
-import Card, { CardHeader } from '../components/ui/Card'
-import StatCard from '../components/ui/StatCard'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import { api } from '../api'
-import { PERIODS } from '../data/earnings'
-import { fmtDate, num } from '../utils/format'
-
-const TX_TONE = { مكتمل: 'success', 'قيد المعالجة': 'warning', مسترد: 'danger' }
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import StatCardsGrid from '@/components/ui/StatCardsGrid'
+import Avatar from '@/components/ui/Avatar'
+import Icon from '@/components/ui/Icon'
+import PageHeader from '@/components/ui/PageHeader'
+import { api } from '@/app/api'
+import { PERIODS } from '@/features/finance/constants'
+import { num } from '@/utils/format'
+import EarningsTable from '@/features/finance/components/EarningsTable'
 
 function Legend({ items }) {
   return (
@@ -85,27 +85,21 @@ export default function Earnings() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الأرباح</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الأرباح"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (loading || !data) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل ملخص الأرباح...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل ملخص الأرباح..."
+      />
     )
   }
 
@@ -154,43 +148,35 @@ export default function Earnings() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">الأرباح</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            ملخص الإيرادات والعمولات — {PERIODS.find((p) => p.key === period)?.title}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Period filter */}
-          <div className="flex rounded-xl border border-line bg-white p-1 shadow-card">
-            {PERIODS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setPeriod(p.key)}
-                className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
-                  period === p.key
-                    ? 'bg-primary text-white shadow-[0_3px_8px_rgba(7,94,102,0.35)]'
-                    : 'text-ink-soft hover:text-primary'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" icon={<Icon name="download" size={17} />} onClick={exportCsv}>
-            تصدير التقرير
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="الأرباح"
+        subtitle={`ملخص الإيرادات والعمولات — ${PERIODS.find((p) => p.key === period)?.title}`}
+        actions={
+          <>
+            <div className="flex rounded-xl border border-line bg-white p-1 shadow-card">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => setPeriod(p.key)}
+                  className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                    period === p.key
+                      ? 'bg-primary text-white shadow-[0_3px_8px_rgba(7,94,102,0.35)]'
+                      : 'text-ink-soft hover:text-primary'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" icon={<Icon name="download" size={17} />} onClick={exportCsv}>
+              تصدير التقرير
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((s) => (
-          <StatCard key={s.label} {...s} />
-        ))}
-      </div>
+      <StatCardsGrid items={stats} />
 
       {/* Area chart + donut */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -377,50 +363,10 @@ export default function Earnings() {
       </div>
 
       {/* Transactions */}
-      <Card className="overflow-hidden">
-        <CardHeader
-          title="آخر المعاملات"
-          subtitle={`المعاملات المالية خلال ${PERIODS.find((p) => p.key === period)?.title}`}
-          actions={<Badge tone="mint">{num(transactions.length)} معاملة</Badge>}
-        />
-        <div className="overflow-x-auto pb-3">
-          <table className="w-full min-w-[860px] text-sm">
-            <thead>
-              <tr className="border-b border-line bg-surface/60 text-[11px] font-bold uppercase tracking-wide text-ink-mute">
-                <th className="px-5 py-3 text-start">المعاملة</th>
-                <th className="px-4 py-3 text-start">العميل</th>
-                <th className="px-4 py-3 text-start">الخدمة</th>
-                <th className="px-4 py-3 text-start">طريقة الدفع</th>
-                <th className="px-4 py-3 text-start">التاريخ</th>
-                <th className="px-4 py-3 text-start">المبلغ</th>
-                <th className="px-4 py-3 text-start">العمولة</th>
-                <th className="px-5 py-3 text-start">الحالة</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {transactions.map((t) => (
-                <tr key={t.id} className="transition-colors hover:bg-mint/40">
-                  <td className="px-5 py-3.5 font-extrabold text-primary">{t.reference}</td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={t.client} size={32} />
-                      <span className="font-bold text-ink">{t.client}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-ink-soft">{t.service}</td>
-                  <td className="px-4 py-3.5 text-ink-soft">{t.method}</td>
-                  <td className="px-4 py-3.5 text-ink-soft">{fmtDate(t.date)}</td>
-                  <td className="px-4 py-3.5 font-extrabold text-ink">{num(t.amount)} ر.س</td>
-                  <td className="px-4 py-3.5 text-ink-soft">{num(t.commission)} ر.س</td>
-                  <td className="px-5 py-3.5">
-                    <Badge tone={TX_TONE[t.status]} dot>{t.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <EarningsTable
+        transactions={transactions}
+        periodTitle={PERIODS.find((p) => p.key === period)?.title}
+      />
     </div>
   )
 }

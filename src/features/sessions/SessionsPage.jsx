@@ -1,60 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
-import Button from '../components/ui/Button'
-import Card, { CardHeader } from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import Modal from '../components/ui/Modal'
-import Pagination from '../components/ui/Pagination'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { api } from '../api'
-import { allFilter, feeFor, options, sessionTypes, useMeta } from '../meta'
-import { fmtDate, localDateStr, num } from '../utils/format'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Icon from '@/components/ui/Icon'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import StatStrip from '@/components/ui/StatStrip'
+import ConfirmDeleteModal from '@/components/ui/ConfirmDeleteModal'
+import { api } from '@/app/api'
+import { allFilter, options, useMeta } from '@/app/meta'
+import { fmtDate, localDateStr, num } from '@/utils/format'
+import {
+  CHIP_STYLE,
+  DAY_HEADERS,
+  DOT,
+  STAT_LABEL,
+  STATUS_TONE,
+  buildMonthGrid,
+  fmtTime,
+} from '@/features/sessions/constants'
+import BookingModal from '@/features/sessions/components/BookingModal'
+import SessionDetailsModal from '@/features/sessions/components/SessionDetailsModal'
+import SessionsToolbar from '@/features/sessions/components/SessionsToolbar'
+import SessionsTable from '@/features/sessions/components/SessionsTable'
 
 const PAGE_SIZE = 8
-
-const STATUS_TONE = { محجوزة: 'teal', مكتملة: 'success', ملغاة: 'danger', 'قيد الانتظار': 'warning' }
-const DOT = { محجوزة: 'bg-accent-soft', مكتملة: 'bg-emerald-500', ملغاة: 'bg-red-400', 'قيد الانتظار': 'bg-amber-400' }
-const CHIP_STYLE = {
-  محجوزة: 'bg-accent-soft text-white',
-  مكتملة: 'bg-emerald-100 text-emerald-700',
-  ملغاة: 'bg-red-100 text-red-400 line-through',
-  'قيد الانتظار': 'bg-amber-100 text-amber-600',
-}
-
-const SORT_OPTIONS = [
-  { key: 'datetime', dir: 'asc', label: 'الأقرب موعداً' },
-  { key: 'datetime', dir: 'desc', label: 'الأبعد موعداً' },
-  { key: 'fee', dir: 'desc', label: 'الأعلى رسوماً' },
-  { key: 'client', dir: 'asc', label: 'اسم العميل' },
-]
-
-const STAT_LABEL = {
-  'الكل': 'إجمالي الجلسات',
-  محجوزة: 'جلسة محجوزة',
-  مكتملة: 'جلسة مكتملة',
-  ملغاة: 'جلسة ملغاة',
-  'قيد الانتظار': 'بانتظار التأكيد',
-}
-
-const DAY_HEADERS = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
-
-const fmtTime = (t) => {
-  if (!t) return ''
-  const [h, m] = t.split(':').map(Number)
-  const h12 = h % 12 || 12
-  return `${h12}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`
-}
-
-/** Day cells for a month, Saturday-first — flows right-to-left inside the RTL grid. */
-function buildMonthGrid(y, m) {
-  const days = new Date(y, m + 1, 0).getDate()
-  const offset = (new Date(y, m, 1).getDay() + 1) % 7
-  const cells = Array(offset).fill(null)
-  for (let d = 1; d <= days; d += 1) cells.push(d)
-  while (cells.length % 7 !== 0) cells.push(null)
-  return cells
-}
 
 /* ---------- Calendar view ---------- */
 function CalendarView({ sessions, onSessionClick }) {
@@ -242,238 +213,6 @@ function CalendarView({ sessions, onSessionClick }) {
   )
 }
 
-/* ---------- Info row helper ---------- */
-function Info({ icon, label, value }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl bg-surface px-3.5 py-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-mint text-primary">
-        <Icon name={icon} size={17} />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-ink-mute">{label}</p>
-        <p className="truncate text-sm font-bold text-ink">{value}</p>
-      </div>
-    </div>
-  )
-}
-
-/* ---------- Session details modal ---------- */
-function SessionDetailsModal({ session, onClose, onUpdate }) {
-  const s = session
-  const canConfirm = s.status === 'محجوزة'
-  const canApprove = s.status === 'قيد الانتظار'
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="تفاصيل الجلسة"
-      subtitle={`رقم الجلسة #${s.id} · ${s.specialty}`}
-      size="lg"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            إغلاق
-          </Button>
-          {(canConfirm || canApprove) && (
-            <Button
-              variant="danger"
-              icon={<Icon name="x" size={16} />}
-              onClick={() => onUpdate({ ...s, status: 'ملغاة' })}
-            >
-              {canConfirm ? 'إلغاء الجلسة' : 'رفض الحجز'}
-            </Button>
-          )}
-          {canConfirm && (
-            <Button
-              icon={<Icon name="check" size={16} />}
-              onClick={() => onUpdate({ ...s, status: 'مكتملة' })}
-            >
-              تأكيد الحضور
-            </Button>
-          )}
-          {canApprove && (
-            <Button
-              icon={<Icon name="check" size={16} />}
-              onClick={() => onUpdate({ ...s, status: 'محجوزة' })}
-            >
-              تأكيد الحجز
-            </Button>
-          )}
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Avatar name={s.client} size={52} />
-          <div>
-            <p className="text-base font-extrabold text-ink">{s.client}</p>
-            <div className="mt-0.5 flex items-center gap-2">
-              <Badge tone={STATUS_TONE[s.status]} dot>
-                {s.status}
-              </Badge>
-              <span className="text-xs font-semibold text-ink-mute">{s.payment}</span>
-            </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Info icon="user-check" label="الأخصائي" value={`${s.specialistTitle} ${s.specialistName}`} />
-          <Info icon="video" label="نوع الجلسة" value={s.type} />
-          <Info icon="calendar" label="الموعد" value={`${fmtDate(s.date)} · ${fmtTime(s.time)}`} />
-          <Info icon="clock" label="المدة" value="ساعة واحدة" />
-          <Info icon="wallet" label="الرسوم" value={`${num(s.fee)} ر.س`} />
-          <Info icon="banknote" label="وسيلة الدفع" value={s.payment} />
-          <Info icon="target" label="مكان الانعقاد" value={s.location} />
-          <Info icon="shield" label="رقم الجلسة" value={`#${s.id}`} />
-        </div>
-        {s.note && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="flex items-center gap-2 text-xs font-bold text-amber-700">
-              <Icon name="bell" size={14} />
-              ملاحظات
-            </p>
-            <p className="mt-1 text-sm text-ink-soft">{s.note}</p>
-          </div>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Booking (new session) modal ---------- */
-function BookingModal({ specialists, clients, onClose, onSaved }) {
-  const meta = useMeta()
-  const [form, setForm] = useState({
-    specialistId: specialists[0]?.id ?? '',
-    clientId: clients[0]?.id ?? '',
-    type: sessionTypes(meta)[0]?.name ?? '',
-    date: '',
-    time: '16:00',
-    payment: options(meta, 'paymentMethod')[0] ?? '',
-    note: '',
-  })
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-  const todayStr = localDateStr(new Date())
-
-  const specialist = specialists.find((x) => x.id === Number(form.specialistId)) ?? specialists[0]
-  const client = clients.find((x) => x.id === Number(form.clientId)) ?? clients[0]
-  const fee = specialist ? feeFor(Number(specialist.fee), form.type) : 0
-
-  const set = (key) => (e) => {
-    setForm((f) => ({ ...f, [key]: e.target.value }))
-    setError(null)
-  }
-
-  const save = async () => {
-    if (!form.date || !form.time) {
-      setError('يرجى اختيار تاريخ ووقت الجلسة')
-      return
-    }
-    if (form.date < todayStr) {
-      setError('لا يمكن حجز جلسة في تاريخ سابق')
-      return
-    }
-    if (!form.specialistId || !form.clientId) {
-      setError('يرجى اختيار الأخصائي والعميل')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const created = await api.createSession({
-        clientName: client.name,
-        clientId: client.id,
-        specialistId: Number(form.specialistId),
-        type: form.type,
-        date: form.date,
-        time: form.time,
-        payment: form.payment,
-        note: form.note.trim() || null,
-      })
-      onSaved(created)
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="حجز جلسة جديدة"
-      subtitle="حدد بيانات الجلسة وسيتم إضافتها للجدول والتقويم"
-      size="lg"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button icon={<Icon name="calendar" size={16} />} onClick={save} disabled={submitting}>
-            {submitting ? 'جارٍ الحجز...' : 'تأكيد الحجز'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Select label="الأخصائي" id="booking-specialist" icon="user-check" value={form.specialistId} onChange={set('specialistId')}>
-            {specialists.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.title} {x.name} — {x.specialty}
-              </option>
-            ))}
-          </Select>
-          <Select label="العميل" id="booking-client" icon="users" value={form.clientId} onChange={set('clientId')}>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <Select label="نوع الجلسة" id="booking-type" icon="video" value={form.type} onChange={set('type')}>
-            {sessionTypes(meta).map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-          <Select label="وسيلة الدفع" id="booking-payment" icon="banknote" value={form.payment} onChange={set('payment')}>
-            {options(meta, 'paymentMethod').map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
-          <Input label="التاريخ" id="booking-date" type="date" min={todayStr} value={form.date} onChange={set('date')} />
-          <Input label="الوقت" id="booking-time" type="time" value={form.time} onChange={set('time')} />
-        </div>
-
-        <div className="flex items-center justify-between rounded-xl bg-mint px-4 py-3">
-          <span className="text-sm font-semibold text-ink-soft">الرسوم المتوقعة</span>
-          <span className="text-lg font-extrabold text-primary">{num(fee)} ر.س</span>
-        </div>
-
-        <Textarea
-          label="ملاحظات (اختياري)"
-          id="booking-note"
-          rows={3}
-          placeholder="مثال: جلسة تقييم أولية للحالة..."
-          value={form.note}
-          onChange={set('note')}
-        />
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Page ---------- */
 export default function Sessions() {
   const meta = useMeta()
   const [sessions, setSessions] = useState([])
@@ -620,161 +359,91 @@ export default function Sessions() {
     setNotice({ text: 'تم تصدير الملف بنجاح ✓', tone: 'success' })
   }
 
-  const viewBtn = (active) =>
-    `inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-bold transition-all ${
-      active ? 'bg-white text-primary shadow-card' : 'text-ink-mute hover:text-primary'
-    }`
-
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل الجلسات</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل الجلسات"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل الجلسات...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل الجلسات..."
+      />
     )
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">الجلسات</h2>
-          <p className="mt-1 text-sm text-ink-soft">جدولة جلسات العملاء ومتابعة المواعيد وحالاتها</p>
-        </div>
-        <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => setBookingOpen(true)}>
-          حجز جلسة جديدة
-        </Button>
-      </div>
+      <PageHeader
+        title="الجلسات"
+        subtitle="جدولة جلسات العملاء ومتابعة المواعيد وحالاتها"
+        actions={
+          <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => setBookingOpen(true)}>
+            حجز جلسة جديدة
+          </Button>
+        }
+      />
 
       {/* Notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === 'error'
-              ? 'border-red-200 bg-red-50 text-red-600'
-              : 'border-accent-soft/30 bg-mint text-primary'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
-            {notice.text}
-          </span>
-          <button
-            onClick={() => setNotice(null)}
-            aria-label="إغلاق"
-            className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30"
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       {/* Stat strip — status filters */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {statuses.map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatus(s)
-              setPage(1)
-            }}
-            className={`rounded-2xl border px-4 py-3.5 text-start transition-all hover:-translate-y-0.5 ${
-              status === s
-                ? 'border-primary bg-primary text-white shadow-[0_6px_16px_rgba(7,94,102,0.35)]'
-                : 'border-line bg-card shadow-card hover:shadow-pop'
-            }`}
-          >
-            <p className={`text-2xl font-extrabold ${status === s ? 'text-white' : 'text-ink'}`}>
-              {num(counts[s])}
-            </p>
-            <p className={`text-xs font-semibold ${status === s ? 'text-white/70' : 'text-ink-mute'}`}>
-              {STAT_LABEL[s]}
-            </p>
-          </button>
-        ))}
-      </div>
+      <StatStrip
+        active={status}
+        onSelect={(k) => {
+          setStatus(k)
+          setPage(1)
+        }}
+        items={statuses.map((s) => ({
+          key: s,
+          value: num(counts[s]),
+          label: STAT_LABEL[s],
+        }))}
+      />
 
-      {/* Toolbar */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-[220px] flex-1">
-            <Input
-              icon="search"
-              placeholder="ابحث بالعميل أو الأخصائي أو نوع الجلسة..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setPage(1)
-              }}
-            />
-          </div>
-
-          <Select className="w-44" value={type} onChange={(e) => { setType(e.target.value); setPage(1) }}>
-            <option value="الكل">كل الأنواع</option>
-            {sessionTypes(meta).map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-
-          {view === 'list' && (
-            <Select className="w-44" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1) }}>
-              {SORT_OPTIONS.map((o) => (
-                <option key={`${o.key}:${o.dir}`} value={`${o.key}:${o.dir}`}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-          )}
-
-          <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
-            <button className={viewBtn(view === 'list')} onClick={() => { setView('list'); setPage(1) }}>
-              <Icon name="clipboard" size={15} />
-              قائمة
-            </button>
-            <button className={viewBtn(view === 'calendar')} onClick={() => setView('calendar')}>
-              <Icon name="calendar" size={15} />
-              تقويم
-            </button>
-          </div>
-
-          <Button variant="ghost" icon={<Icon name="download" size={17} />} onClick={exportCsv}>
-            تصدير CSV
-          </Button>
-        </div>
-      </Card>
+      <SessionsToolbar
+        search={search}
+        onSearchChange={(e) => {
+          setSearch(e.target.value)
+          setPage(1)
+        }}
+        type={type}
+        onTypeChange={(e) => {
+          setType(e.target.value)
+          setPage(1)
+        }}
+        sort={sort}
+        onSortChange={(e) => {
+          setSort(e.target.value)
+          setPage(1)
+        }}
+        showSort={view === 'list'}
+        view={view}
+        onViewChange={(v) => {
+          setView(v)
+          if (v === 'list') setPage(1)
+        }}
+        onExport={exportCsv}
+      />
 
       {/* Content */}
       {view === 'calendar' ? (
         <CalendarView sessions={rows} onSessionClick={setDetails} />
       ) : paged.length === 0 ? (
-        <Card className="flex flex-col items-center px-6 py-20 text-center">
-          <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-            <Icon name="clipboard" size={38} strokeWidth={1.6} />
-          </div>
-          <h3 className="mt-5 text-lg font-extrabold text-ink">لا توجد جلسات مطابقة</h3>
-          <p className="mt-1.5 max-w-sm text-sm text-ink-soft">
-            جرّب تعديل البحث أو الفلاتر، أو احجز جلسة جديدة من الزر أعلاه.
-          </p>
+        <PageState
+          mode="empty"
+          icon="clipboard"
+          title="لا توجد جلسات مطابقة"
+          message="جرّب تعديل البحث أو الفلاتر، أو احجز جلسة جديدة من الزر أعلاه."
+        >
           <div className="mt-5 flex flex-wrap justify-center gap-2.5">
             <Button variant="outline" onClick={() => { setSearch(''); setStatus('الكل'); setType('الكل'); setPage(1) }}>
               إعادة تعيين الفلاتر
@@ -783,83 +452,17 @@ export default function Sessions() {
               حجز جلسة
             </Button>
           </div>
-        </Card>
+        </PageState>
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
-              <thead>
-                <tr className="border-b border-line bg-surface/60 text-[11px] font-bold uppercase tracking-wide text-ink-mute">
-                  <th className="px-5 py-3 text-start">العميل</th>
-                  <th className="px-4 py-3 text-start">الأخصائي</th>
-                  <th className="px-4 py-3 text-start">النوع</th>
-                  <th className="px-4 py-3 text-start">الموعد</th>
-                  <th className="px-4 py-3 text-start">الرسوم</th>
-                  <th className="px-4 py-3 text-start">الدفع</th>
-                  <th className="px-4 py-3 text-start">الحالة</th>
-                  <th className="px-5 py-3 text-end">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {paged.map((s) => (
-                  <tr key={s.id} className="transition-colors hover:bg-mint/40">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={s.client} size={40} />
-                        <div>
-                          <p className="font-bold text-ink">{s.client}</p>
-                          <p className="text-xs text-ink-mute">#{s.id}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <Avatar name={s.specialistName} size={28} />
-                        <div>
-                          <p className="whitespace-nowrap font-semibold text-ink-soft">
-                            {s.specialistTitle} {s.specialistName}
-                          </p>
-                          <p className="text-[11px] text-ink-mute">{s.specialty}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-ink-soft">{s.type}</td>
-                    <td className="px-4 py-3.5">
-                      <p className="font-bold text-ink">{fmtDate(s.date)}</p>
-                      <p className="text-xs text-ink-mute">{fmtTime(s.time)}</p>
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-ink">{num(s.fee)} ر.س</td>
-                    <td className="px-4 py-3.5 text-ink-soft">{s.payment}</td>
-                    <td className="px-4 py-3.5">
-                      <Badge tone={STATUS_TONE[s.status]} dot>
-                        {s.status}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          title="تفاصيل الجلسة"
-                          className="grid size-8 place-items-center rounded-lg text-ink-mute transition-colors hover:bg-mint hover:text-primary"
-                          onClick={() => setDetails(s)}
-                        >
-                          <Icon name="eye" size={17} />
-                        </button>
-                        <button
-                          title="حذف الجلسة"
-                          className="grid size-8 place-items-center rounded-lg text-ink-mute transition-colors hover:bg-red-50 hover:text-red-500"
-                          onClick={() => setDeleteTarget(s)}
-                        >
-                          <Icon name="trash" size={17} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={safePage} pageSize={PAGE_SIZE} total={rows.length} onChange={setPage} />
-        </Card>
+        <SessionsTable
+          rows={paged}
+          page={safePage}
+          pageSize={PAGE_SIZE}
+          total={rows.length}
+          onPageChange={setPage}
+          onView={setDetails}
+          onDelete={setDeleteTarget}
+        />
       )}
 
       {/* Modals */}
@@ -874,33 +477,20 @@ export default function Sessions() {
       )}
 
       {/* Delete confirm */}
-      <Modal
+      <ConfirmDeleteModal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
         title="حذف الجلسة"
-        subtitle="لا يمكن التراجع عن هذا الإجراء"
-        size="sm"
-        footer={
+        confirmLabel="حذف نهائي"
+        busy={deleting}
+        message={
           <>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              إلغاء
-            </Button>
-            <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete} disabled={deleting}>
-              {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex items-start gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
-            <Icon name="trash" size={20} />
-          </span>
-          <p className="text-sm leading-relaxed text-ink-soft">
             هل أنت متأكد من حذف جلسة <span className="font-extrabold text-ink">«{deleteTarget?.client}»</span>؟
             سيتم حذف الجلسة وجميع بياناتها نهائياً.
-          </p>
-        </div>
-      </Modal>
+          </>
+        }
+        onConfirm={confirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

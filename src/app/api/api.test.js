@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Unlike the page tests (which mock the whole api module), this file exercises
 // the REAL request()/authHeaders() logic by stubbing the global fetch.
-import { api, TOKEN_KEY } from './api'
+import { api, TOKEN_KEY } from '@/app/api'
 
 /** Stubs the global fetch with a canned Response-shaped object. */
 function mockFetch(status, body) {

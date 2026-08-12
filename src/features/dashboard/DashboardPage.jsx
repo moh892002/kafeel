@@ -4,14 +4,16 @@ import {
   Area, AreaChart, CartesianGrid, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import Button from '../components/ui/Button'
-import Card, { CardHeader } from '../components/ui/Card'
-import StatCard from '../components/ui/StatCard'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import { api } from '../api'
-import { num } from '../utils/format'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import StatCardsGrid from '@/components/ui/StatCardsGrid'
+import Badge from '@/components/ui/Badge'
+import Icon from '@/components/ui/Icon'
+import PageHeader from '@/components/ui/PageHeader'
+import PageState from '@/components/ui/PageState'
+import { api } from '@/app/api'
+import { num } from '@/utils/format'
+import LatestSpecialistsTable from '@/features/dashboard/components/LatestSpecialistsTable'
 
 /* Stat-card presentation per dashboard slot (label comes from the API). */
 const STAT_PRESENTATION = [
@@ -93,27 +95,21 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل لوحة المعلومات</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل لوحة المعلومات"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (!data) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-2 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل لوحة المعلومات...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل لوحة المعلومات..."
+      />
     )
   }
 
@@ -121,30 +117,42 @@ export default function Dashboard() {
   const yearTotal = revenueSeries.reduce((sum, p) => sum + Number(p.earnings), 0)
   const yearTotalThousands = num(Math.round(yearTotal / 1000))
 
+  const exportReport = () => {
+    const header = ['الأخصائي', 'التخصص', 'التقييم', 'الجلسات', 'الرسوم (ر.س)', 'الحالة']
+    const lines = specialists.map((s) =>
+      [s.name, s.specialty, s.rating, s.sessions, s.fee, s.status].join(','),
+    )
+    const blob = new Blob(['\uFEFF' + [header.join(','), ...lines].join('\n')], {
+      type: 'text/csv;charset=utf-8;',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'dashboard-report.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       {/* Welcome header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">مرحباً بعودتك، محمد 👋</h2>
-          <p className="mt-1 text-sm text-ink-soft">{todayArabic()} — هذه نظرة عامة على أداء منصة كفيل</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button variant="outline" icon={<Icon name="download" size={18} />}>
-            تصدير التقرير
-          </Button>
-          <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => navigate('/specialists/add')}>
-            إضافة أخصائي جديد
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="مرحباً بعودتك، محمد 👋"
+        subtitle={`${todayArabic()} — هذه نظرة عامة على أداء منصة كفيل`}
+        actions={
+          <>
+            <Button variant="outline" icon={<Icon name="download" size={18} />} onClick={exportReport}>
+              تصدير التقرير
+            </Button>
+            <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => navigate('/specialists/add')}>
+              إضافة أخصائي جديد
+            </Button>
+          </>
+        }
+      />
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((s) => (
-          <StatCard key={s.label} {...s} />
-        ))}
-      </div>
+      <StatCardsGrid items={stats} />
 
       {/* Charts row */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -240,62 +248,13 @@ export default function Dashboard() {
 
       {/* Specialists + upcoming sessions */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader
-            title="أحدث الأخصائيين"
-            subtitle="أحدث الأخصائيين المنضمين للمنصة"
-            actions={<Button variant="ghost" size="sm">عرض الكل</Button>}
-          />
-          <div className="overflow-x-auto px-2 pb-3">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="text-start text-[11px] font-bold uppercase tracking-wide text-ink-mute">
-                  <th className="px-3 py-2.5 text-start">الأخصائي</th>
-                  <th className="px-3 py-2.5 text-start">التقييم</th>
-                  <th className="px-3 py-2.5 text-start">الجلسات</th>
-                  <th className="px-3 py-2.5 text-start">الحالة</th>
-                  <th className="px-3 py-2.5 text-end">إجراء</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {specialists.map((s) => (
-                  <tr key={s.id} className="transition-colors hover:bg-mint/40">
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={s.name} size={38} />
-                        <div>
-                          <p className="font-bold text-ink">{s.name}</p>
-                          <p className="text-xs text-ink-mute">{s.role}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="inline-flex items-center gap-1 font-bold text-ink">
-                        <Icon name="star" size={14} className="text-amber-400" />
-                        {s.rating}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 font-semibold text-ink-soft">{s.sessions}</td>
-                    <td className="px-3 py-3">
-                      <Badge tone={s.tone} dot>{s.status}</Badge>
-                    </td>
-                    <td className="px-3 py-3 text-end">
-                      <button className="rounded-lg p-2 text-ink-mute transition-colors hover:bg-mint hover:text-primary">
-                        <Icon name="more-v" size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <LatestSpecialistsTable specialists={specialists} onViewAll={() => navigate('/specialists')} />
 
         <Card>
           <CardHeader
             title="الجلسات القادمة"
             subtitle="أقرب الجلسات المجدولة"
-            actions={<Button variant="ghost" size="sm">الجدول</Button>}
+            actions={<Button variant="ghost" size="sm" onClick={() => navigate('/sessions')}>الجدول</Button>}
           />
           <ul className="space-y-1 px-3 pb-4">
             {upcomingSessions.map((s) => (
@@ -324,7 +283,7 @@ export default function Dashboard() {
         <CardHeader
           title="الدورات الأكثر إقبالاً"
           subtitle="نسبة اكتمال التسجيل في الدورات"
-          actions={<Button variant="outline" size="sm" icon={<Icon name="eye" size={15} />}>عرض التفاصيل</Button>}
+          actions={<Button variant="outline" size="sm" icon={<Icon name="eye" size={15} />} onClick={() => navigate('/courses')}>عرض التفاصيل</Button>}
         />
         <div className="space-y-5 px-5 pb-6 pt-2">
           {topCourses.map((c) => {

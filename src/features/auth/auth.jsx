@@ -4,9 +4,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { api, TOKEN_KEY } from './api'
+import { api, TOKEN_KEY } from '@/app/api'
 import { AuthContext, useAuth } from './useAuth'
-import Icon from './components/ui/Icon'
+import Icon from '@/components/ui/Icon'
 
 export function AuthProvider({ children }) {
   const [admin, setAdmin] = useState(null)
@@ -54,7 +54,20 @@ export function AuthProvider({ children }) {
     return api.changePassword(currentPassword, newPassword)
   }, [])
 
-  return <AuthContext.Provider value={{ admin, ready, login, logout, changePassword }}>{children}</AuthContext.Provider>
+  // Updates the real admin identity; on email change the backend re-issues the
+  // JWT (the token subject is the email), so store the fresh token + profile.
+  const updateProfile = useCallback(async (name, email) => {
+    const res = await api.updateProfile(name, email)
+    localStorage.setItem(TOKEN_KEY, res.token)
+    setAdmin({ email: res.email, name: res.name })
+    return res
+  }, [])
+
+  return (
+    <AuthContext.Provider value={{ admin, ready, login, logout, changePassword, updateProfile }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 /** Redirects unauthenticated visitors to /login while the session check runs. */

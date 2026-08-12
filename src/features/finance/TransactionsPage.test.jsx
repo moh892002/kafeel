@@ -2,8 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 // Mock the API client so the page never touches the network. The mock is shared
-// with meta.js (it imports { api } from './api'), so ensureMeta can be pre-seeded.
-vi.mock('../api', () => ({
+// with meta.js (it imports { api } from '@/app/api'), so ensureMeta can be pre-seeded.
+vi.mock('@/app/api', () => ({
   api: {
     transactions: vi.fn(),
     createTransaction: vi.fn(),
@@ -15,9 +15,9 @@ vi.mock('../api', () => ({
   },
 }))
 
-import { api } from '../api'
-import { ensureMeta } from '../meta'
-import Transactions from './Transactions'
+import { api } from '@/app/api'
+import { ensureMeta } from '@/app/meta'
+import Transactions from './TransactionsPage'
 
 const META = {
   paymentMethod: ['مدى', 'فيزا', 'تحويل بنكي'],

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./api', () => ({ api: { meta: vi.fn() } }))
-import { api } from './api'
+vi.mock('@/app/api', () => ({ api: { meta: vi.fn() } }))
+import { api } from '@/app/api'
 
 describe('ensureMeta singleton', () => {
   beforeEach(() => {

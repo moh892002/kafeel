@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import Button from '../components/ui/Button'
-import Card, { CardHeader } from '../components/ui/Card'
-import StatCard from '../components/ui/StatCard'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import { api } from '../api'
-import { fmtDate, num } from '../utils/format'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import StatCardsGrid from '@/components/ui/StatCardsGrid'
+import Badge from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import Icon from '@/components/ui/Icon'
+import PageHeader from '@/components/ui/PageHeader'
+import { api } from '@/app/api'
+import { fmtDate, num } from '@/utils/format'
+import SpecialistSessionsTable from '@/features/specialists/components/SpecialistSessionsTable'
 
 const STATUS_TONE = { نشط: 'success', معلق: 'warning', موقوف: 'danger' }
-const SESSION_TONE = { مكتملة: 'success', ملغاة: 'danger' }
 
 function Stars({ rating, size = 14, className = '' }) {
   return (
@@ -63,44 +65,36 @@ export default function SpecialistDetails() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-2 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل بيانات الأخصائي...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل بيانات الأخصائي..."
+      />
     )
   }
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل بيانات الأخصائي</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل بيانات الأخصائي"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (!detail) {
     return (
-      <Card className="flex flex-col items-center px-6 py-24 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-          <Icon name="user" size={38} strokeWidth={1.6} />
-        </div>
-        <h2 className="mt-6 text-2xl font-extrabold text-ink">الأخصائي غير موجود</h2>
-        <p className="mt-2 max-w-md text-sm text-ink-soft">
-          لم نتمكن من العثور على هذا الأخصائي، قد يكون محذوفاً أو أن الرابط غير صحيح.
-        </p>
+      <PageState
+        mode="notFound"
+        icon="user"
+        title="الأخصائي غير موجود"
+        message="لم نتمكن من العثور على هذا الأخصائي، قد يكون محذوفاً أو أن الرابط غير صحيح."
+      >
         <Button variant="outline" className="mt-6" icon={<Icon name="chevron-right" size={16} />} onClick={() => navigate('/specialists')}>
           العودة لقائمة الأخصائيين
         </Button>
-      </Card>
+      </PageState>
     )
   }
 
@@ -133,24 +127,16 @@ export default function SpecialistDetails() {
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/specialists')}
-            aria-label="رجوع"
-            className="grid size-10 place-items-center rounded-xl border border-line bg-white text-ink-soft transition-colors hover:bg-mint hover:text-primary"
-          >
-            <Icon name="chevron-right" size={20} />
-          </button>
-          <div>
-            <p className="text-[11px] font-medium text-ink-mute">إدارة الأخصائيين</p>
-            <h2 className="text-2xl font-extrabold text-ink">تفاصيل الأخصائي</h2>
-          </div>
-        </div>
-        <Button variant="outline" icon={<Icon name="download" size={18} />} onClick={exportReport}>
-          تصدير التقرير
-        </Button>
-      </div>
+      <PageHeader
+        title="تفاصيل الأخصائي"
+        kicker="إدارة الأخصائيين"
+        backTo="/specialists"
+        actions={
+          <Button variant="outline" icon={<Icon name="download" size={18} />} onClick={exportReport}>
+            تصدير التقرير
+          </Button>
+        }
+      />
 
       {/* Hero profile card */}
       <Card className="overflow-hidden">
@@ -218,11 +204,7 @@ export default function SpecialistDetails() {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map((c) => (
-          <StatCard key={c.label} {...c} />
-        ))}
-      </div>
+      <StatCardsGrid items={statCards} />
 
       {/* Rating + sessions */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -255,48 +237,7 @@ export default function SpecialistDetails() {
 
         <Card className="xl:col-span-2">
           <CardHeader title="آخر الجلسات" subtitle={`أحدث ${sessions.length} جلسات مسجلة خلال آخر 90 يوم`} />
-          {sessions.length === 0 ? (
-            <p className="px-4 pb-6 text-sm text-ink-mute">لا توجد جلسات مسجلة لهذا الأخصائي خلال آخر 90 يوم.</p>
-          ) : (
-            <div className="overflow-x-auto pb-3">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="text-[11px] font-bold uppercase tracking-wide text-ink-mute">
-                    <th className="px-4 py-2.5 text-start">العميل</th>
-                    <th className="px-4 py-2.5 text-start">النوع</th>
-                    <th className="px-4 py-2.5 text-start">التاريخ</th>
-                    <th className="px-4 py-2.5 text-start">الوقت</th>
-                    <th className="px-4 py-2.5 text-start">الرسوم</th>
-                    <th className="px-4 py-2.5 text-start">الحالة</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {sessions.slice(0, 6).map((se) => (
-                    <tr key={se.id} className="transition-colors hover:bg-mint/40">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={se.client} size={32} />
-                          <span className="font-bold text-ink">{se.client}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-ink-soft">{se.type}</td>
-                      <td className="px-4 py-3 text-ink-soft">{fmtDate(se.date)}</td>
-                      <td className="px-4 py-3 text-ink-soft">{se.time}</td>
-                      <td className="px-4 py-3 font-semibold text-ink">{num(se.fee)} ر.س</td>
-                      <td className="px-4 py-3">
-                        <Badge tone={SESSION_TONE[se.status]} dot>{se.status}</Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {sessions.length > 6 && (
-            <p className="px-4 pb-4 text-xs font-semibold text-ink-mute">
-              + {sessions.length - 6} جلسات أخرى
-            </p>
-          )}
+          <SpecialistSessionsTable sessions={sessions} />
         </Card>
       </div>
 

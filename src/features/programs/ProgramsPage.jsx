@@ -1,303 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
-import Avatar from '../components/ui/Avatar'
-import Icon from '../components/ui/Icon'
-import Modal from '../components/ui/Modal'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { api } from '../api'
-import { PROGRAM_CATEGORIES } from '../data/programs'
-import { allFilter, options, statusChoices, useMeta } from '../meta'
-import { fmtDate, num } from '../utils/format'
+import Button from '@/components/ui/Button'
+import Card from '@/components/ui/Card'
+import PageState from '@/components/ui/PageState'
+import Badge from '@/components/ui/Badge'
+import Avatar from '@/components/ui/Avatar'
+import Icon from '@/components/ui/Icon'
+import Notice from '@/components/ui/Notice'
+import PageHeader from '@/components/ui/PageHeader'
+import StatStrip from '@/components/ui/StatStrip'
+import ConfirmDeleteModal from '@/components/ui/ConfirmDeleteModal'
+import { Select } from '@/components/ui/Input'
+import { api } from '@/app/api'
+import { STATUS_TONE } from '@/features/programs/constants'
+import ProgramDetailsModal from '@/features/programs/components/ProgramDetailsModal'
+import EnrollModal from '@/features/programs/components/EnrollModal'
+import ProgramFormModal from '@/features/programs/components/ProgramFormModal'
+import ProgramsToolbar from '@/features/programs/components/ProgramsToolbar'
+import { allFilter, options, statusChoices, useMeta } from '@/app/meta'
+import { fmtDate, num } from '@/utils/format'
 
-const STATUS_TONE = { مفتوح: 'success', مكتمل: 'neutral', معلق: 'warning' }
-
-const SORT_OPTIONS = [
-  { key: 'startDate', dir: 'asc', label: 'الأقرب بداية' },
-  { key: 'enrolled', dir: 'desc', label: 'الأكثر تسجيلاً' },
-  { key: 'rating', dir: 'desc', label: 'الأعلى تقييماً' },
-  { key: 'price', dir: 'asc', label: 'السعر الأقل' },
-]
-
-const localDateStr = () => {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-/* ---------- Details modal ---------- */
-function ProgramDetailsModal({ program, onClose, onRegister }) {
-  const p = program
-  const pct = Math.round((p.enrolled / Math.max(1, p.capacity)) * 100)
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="تفاصيل البرنامج"
-      subtitle={`${p.category} · ${p.sessions} جلسات`}
-      size="lg"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            إغلاق
-          </Button>
-          {p.status === 'مفتوح' &&
-            (p.capacity > 0 && p.enrolled >= p.capacity ? (
-              <Button disabled>
-                <Icon name="x" size={16} strokeWidth={2.4} className="mr-1" />
-                البرنامج ممتلئ
-              </Button>
-            ) : (
-              <Button icon={<Icon name="check" size={16} />} onClick={onRegister}>
-                سجّل الآن
-              </Button>
-            ))}
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div className={`h-24 overflow-hidden rounded-2xl bg-gradient-to-l ${p.cover ?? 'from-primary to-accent-soft'}`}>
-          <div className="flex h-full items-center justify-between px-5">
-            <p className="max-w-[70%] text-lg font-extrabold text-white">{p.title}</p>
-            <Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge>
-          </div>
-        </div>
-
-        <p className="text-sm leading-relaxed text-ink-soft">{p.description}</p>
-
-        <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3">
-          <Avatar name={p.instructor?.name ?? '—'} size={40} />
-          <div>
-            <p className="text-sm font-bold text-ink">
-              {p.instructor?.title ?? ''} {p.instructor?.name ?? '—'}
-            </p>
-            <p className="text-xs text-ink-mute">{p.instructor?.specialty ?? ''}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { icon: 'calendar', label: 'تاريخ البدء', value: fmtDate(p.startDate) },
-            { icon: 'clipboard', label: 'عدد الجلسات', value: `${p.sessions} جلسة` },
-            { icon: 'wallet', label: 'السعر', value: Number(p.price) === 0 ? 'مجاني' : `${num(p.price)} ر.س` },
-            { icon: 'star', label: 'التقييم', value: Number(p.rating ?? 0).toFixed(1) },
-          ].map((x) => (
-            <div key={x.label} className="rounded-xl border border-line bg-white px-3 py-2.5">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-mute">
-                <Icon name={x.icon} size={13} className="text-primary" />
-                {x.label}
-              </p>
-              <p className="mt-1 truncate text-sm font-extrabold text-ink">{x.value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-xl bg-mint px-4 py-3">
-          <div className="flex items-center justify-between text-xs font-bold">
-            <span className="text-ink-soft">المسجلون</span>
-            <span className="text-primary">
-              {num(p.enrolled)} من {num(p.capacity)} ({pct}%)
-            </span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-accent-soft to-primary transition-all duration-700"
-              style={{ width: `${Math.min(100, pct)}%` }}
-            />
-          </div>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Enroll modal ---------- */
-function EnrollModal({ program, onClose, onEnrolled }) {
-  const meta = useMeta()
-  const methods = options(meta, 'paymentMethod')
-  const [form, setForm] = useState({ clientName: '', method: methods[0] ?? 'مدى' })
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const save = async () => {
-    if (!form.clientName.trim()) {
-      setError('يرجى إدخال اسم العميل')
-      return
-    }
-    setSubmitting(true)
-    try {
-      await api.enrollProgram(program.id, {
-        clientName: form.clientName.trim(),
-        method: form.method,
-      })
-      onEnrolled(form.clientName.trim())
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  // capacity 0 means unlimited seats — never show a (misleading) seat count then.
-  const unlimited = Number(program.capacity) <= 0
-  const seats = unlimited ? null : Math.max(0, program.capacity - program.enrolled)
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="تسجيل في البرنامج"
-      subtitle={`«${program.title}» — ${unlimited ? 'مقاعد غير محدودة' : `${seats} مقعد متبقي`}`}
-      size="sm"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button icon={<Icon name="check" size={16} />} onClick={save} disabled={submitting}>
-            {submitting ? 'جارٍ التسجيل...' : 'تأكيد التسجيل'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-        <Input
-          label="اسم العميل"
-          id="pe-name"
-          placeholder="مثال: أحمد الشمري"
-          value={form.clientName}
-          onChange={(e) => {
-            setForm((f) => ({ ...f, clientName: e.target.value }))
-            setError(null)
-          }}
-        />
-        <Select
-          label="وسيلة الدفع"
-          id="pe-method"
-          icon="wallet"
-          value={form.method}
-          onChange={(e) => setForm((f) => ({ ...f, method: e.target.value }))}
-        >
-          {methods.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </Select>
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Add program modal ---------- */
-function AddProgramModal({ specialists, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    title: '',
-    category: PROGRAM_CATEGORIES[0],
-    instructorId: specialists[0]?.id ?? '',
-    price: 300,
-    capacity: 60,
-    sessions: 8,
-    startDate: localDateStr(),
-    description: '',
-  })
-  const [error, setError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const set = (key) => (e) => {
-    setForm((f) => ({ ...f, [key]: e.target.value }))
-    setError(null)
-  }
-
-  const save = async () => {
-    if (!form.title.trim()) {
-      setError('يرجى إدخال اسم البرنامج')
-      return
-    }
-    if (!form.instructorId) {
-      setError('يرجى اختيار مقدم البرنامج')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const created = await api.createProgram({
-        title: form.title.trim(),
-        category: form.category,
-        instructorId: Number(form.instructorId),
-        description: form.description.trim() || null,
-        sessions: Number(form.sessions) || 8,
-        price: Number(form.price) || 0,
-        capacity: Number(form.capacity) || 60,
-        startDate: form.startDate,
-      })
-      onSaved(created)
-    } catch (e) {
-      setError(e.message)
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="إضافة برنامج جديد"
-      subtitle="أنشئ برنامجاً تدريبياً جديداً على المنصة"
-      size="lg"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button icon={<Icon name="plus" size={16} strokeWidth={2.4} />} onClick={save} disabled={submitting}>
-            {submitting ? 'جارٍ الإنشاء...' : 'إنشاء البرنامج'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-            <Icon name="x" size={16} strokeWidth={2.4} />
-            {error}
-          </div>
-        )}
-        <Input label="اسم البرنامج" id="pg-title" placeholder="مثال: برنامج إدارة الضغوط" value={form.title} onChange={set('title')} />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Select label="الفئة" id="pg-category" value={form.category} onChange={set('category')}>
-            {PROGRAM_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-          <Select label="مقدم البرنامج" id="pg-instructor" icon="user-check" value={form.instructorId} onChange={set('instructorId')}>
-            {specialists.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title} {s.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Input label="السعر (ر.س)" id="pg-price" type="number" min="0" value={form.price} onChange={set('price')} />
-          <Input label="الطاقة" id="pg-capacity" type="number" min="1" value={form.capacity} onChange={set('capacity')} />
-          <Input label="الجلسات" id="pg-sessions" type="number" min="1" value={form.sessions} onChange={set('sessions')} />
-          <Input label="تاريخ البدء" id="pg-start" type="date" value={form.startDate} onChange={set('startDate')} />
-        </div>
-        <Textarea label="وصف البرنامج" id="pg-desc" rows={3} value={form.description} onChange={set('description')} placeholder="نبذة عن البرنامج وأهدافه..." />
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Page ---------- */
 export default function Programs() {
   const meta = useMeta()
   const [programs, setPrograms] = useState([])
@@ -413,123 +134,73 @@ export default function Programs() {
 
   if (error && programs.length === 0) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">تعذر تحميل البرامج</h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button variant="outline" className="mt-5" onClick={() => window.location.reload()}>
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل البرامج"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     )
   }
 
   if (loading && programs.length === 0) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل البرامج...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل البرامج..."
+      />
     )
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">البرامج</h2>
-          <p className="mt-1 text-sm text-ink-soft">البرامج التدريبية الجماعية على المنصة وإدارة تسجيلها</p>
-        </div>
-        <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => setAddOpen(true)}>
-          إضافة برنامج جديد
-        </Button>
-      </div>
+      <PageHeader
+        title="البرامج"
+        subtitle="البرامج التدريبية الجماعية على المنصة وإدارة تسجيلها"
+        actions={
+          <Button icon={<Icon name="plus" size={18} strokeWidth={2.4} />} onClick={() => setAddOpen(true)}>
+            إضافة برنامج جديد
+          </Button>
+        }
+      />
 
       {/* Notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === 'error'
-              ? 'border-red-200 bg-red-50 text-red-600'
-              : 'border-accent-soft/30 bg-mint text-primary'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon name={notice.tone === 'error' ? 'x' : 'check'} size={16} strokeWidth={2.4} />
-            {notice.text}
-          </span>
-          <button onClick={() => setNotice(null)} aria-label="إغلاق" className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       {/* Stat strip */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {statuses.map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatus(s)
-            }}
-            className={`rounded-2xl border px-4 py-3.5 text-start transition-all hover:-translate-y-0.5 ${
-              status === s ? 'border-primary bg-primary text-white shadow-[0_6px_16px_rgba(7,94,102,0.35)]' : 'border-line bg-card shadow-card hover:shadow-pop'
-            }`}
-          >
-            <p className={`text-2xl font-extrabold ${status === s ? 'text-white' : 'text-ink'}`}>{num(counts[s])}</p>
-            <p className={`text-xs font-semibold ${status === s ? 'text-white/70' : 'text-ink-mute'}`}>
-              {s === 'الكل' ? 'إجمالي البرامج' : s}
-            </p>
-          </button>
-        ))}
-      </div>
+      <StatStrip
+        cols="lg:grid-cols-4"
+        active={status}
+        onSelect={setStatus}
+        items={statuses.map((s) => ({
+          key: s,
+          value: num(counts[s]),
+          label: s === 'الكل' ? 'إجمالي البرامج' : s,
+        }))}
+      />
 
-      {/* Toolbar */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-[220px] flex-1">
-            <Input
-              icon="search"
-              placeholder="ابحث باسم البرنامج أو الفئة..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <Select className="w-44" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="الكل">كل الفئات</option>
-            {PROGRAM_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-          <Select className="w-44" value={sort} onChange={(e) => setSort(e.target.value)}>
-            {SORT_OPTIONS.map((o) => (
-              <option key={`${o.key}:${o.dir}`} value={`${o.key}:${o.dir}`}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </Card>
+      <ProgramsToolbar
+        search={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        category={category}
+        onCategoryChange={(e) => setCategory(e.target.value)}
+        sort={sort}
+        onSortChange={(e) => setSort(e.target.value)}
+      />
 
       {/* Grid */}
       {rows.length === 0 ? (
-        <Card className="flex flex-col items-center px-6 py-20 text-center">
-          <div className="grid size-20 place-items-center rounded-3xl bg-mint text-primary">
-            <Icon name="megaphone" size={38} strokeWidth={1.6} />
-          </div>
-          <h3 className="mt-5 text-lg font-extrabold text-ink">لا توجد برامج مطابقة</h3>
-          <p className="mt-1.5 max-w-sm text-sm text-ink-soft">جرّب تعديل البحث أو الفلاتر لعرض جميع البرامج.</p>
+        <PageState
+          mode="empty"
+          icon="megaphone"
+          title="لا توجد برامج مطابقة"
+          message="جرّب تعديل البحث أو الفلاتر لعرض جميع البرامج."
+        >
           <Button variant="outline" className="mt-5" onClick={() => { setSearch(''); setStatus('الكل'); setCategory('الكل') }}>
             إعادة تعيين الفلاتر
           </Button>
-        </Card>
+        </PageState>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((p) => {
@@ -646,36 +317,23 @@ export default function Programs() {
           }}
         />
       )}
-      {addOpen && <AddProgramModal specialists={specialists} onClose={() => setAddOpen(false)} onSaved={addProgram} />}
+      {addOpen && <ProgramFormModal specialists={specialists} onClose={() => setAddOpen(false)} onSaved={addProgram} />}
 
       {/* Delete confirm */}
-      <Modal
+      <ConfirmDeleteModal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
         title="حذف البرنامج"
-        subtitle="لا يمكن التراجع عن هذا الإجراء"
-        size="sm"
-        footer={
+        confirmLabel="حذف نهائي"
+        busy={deleting}
+        message={
           <>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              إلغاء
-            </Button>
-            <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={confirmDelete} disabled={deleting}>
-              {deleting ? 'جارٍ الحذف...' : 'حذف نهائي'}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex items-start gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-500">
-            <Icon name="trash" size={20} />
-          </span>
-          <p className="text-sm leading-relaxed text-ink-soft">
             هل أنت متأكد من حذف البرنامج <span className="font-extrabold text-ink">«{deleteTarget?.title}»</span>؟
             سيتم حذف جميع بياناته وبيانات المسجلين فيه نهائياً.
-          </p>
-        </div>
-      </Modal>
+          </>
+        }
+        onConfirm={confirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

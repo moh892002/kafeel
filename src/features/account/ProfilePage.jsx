@@ -1,13 +1,18 @@
-import { useEffect, useState } from "react";
-import Button from "../components/ui/Button";
-import Card, { CardHeader } from "../components/ui/Card";
-import Badge from "../components/ui/Badge";
-import Avatar from "../components/ui/Avatar";
-import Icon from "../components/ui/Icon";
-import { Input, Textarea } from "../components/ui/Input";
-import Switch from "../components/ui/Switch";
-import { api } from "../api";
-import { useAuth } from "../useAuth";
+import { useEffect, useRef, useState } from "react";
+import Button from "@/components/ui/Button";
+import Card, { CardHeader } from "@/components/ui/Card";
+import PageState from '@/components/ui/PageState'
+import Badge from "@/components/ui/Badge";
+import Avatar from "@/components/ui/Avatar";
+import Icon from "@/components/ui/Icon"
+import FormError from '@/components/ui/FormError'
+import Notice from '@/components/ui/Notice'
+;
+import PageHeader from "@/components/ui/PageHeader";
+import { Input, Textarea } from "@/components/ui/Input";
+import Switch from "@/components/ui/Switch";
+import { api } from "@/app/api";
+import { useAuth } from "@/features/auth/useAuth";
 
 const TABS = [
   { key: "account", label: "الحساب", icon: "user" },
@@ -53,7 +58,7 @@ const timeAgo = (iso) => {
 };
 
 export default function Profile() {
-  const { admin } = useAuth();
+  const { admin, updateProfile } = useAuth();
   const defaultName = admin?.name ?? "المدير";
   const [tab, setTab] = useState("account");
   const [account, setAccount] = useState(ACCOUNT_DEFAULTS);
@@ -73,6 +78,9 @@ export default function Profile() {
   const [sessions, setSessions] = useState([]);
   const [sessionsError, setSessionsError] = useState(null);
   const [terminating, setTerminating] = useState(null);
+  // Last-persisted identity — only the admin endpoint (which rotates the JWT)
+  // is called when name or email actually changed.
+  const persistedIdentity = useRef(null);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -87,12 +95,14 @@ export default function Profile() {
       .then((map) => {
         if (cancelled) return;
         const s = map ?? {};
-        setAccount({
+        const loaded = {
           name: str(s, "profile.name", defaultName),
           email: str(s, "profile.email", ACCOUNT_DEFAULTS.email),
           phone: str(s, "profile.phone", ACCOUNT_DEFAULTS.phone),
           bio: str(s, "profile.bio", ACCOUNT_DEFAULTS.bio),
-        });
+        };
+        setAccount(loaded);
+        persistedIdentity.current = { name: loaded.name, email: loaded.email };
         setPrefs({
           booking: bool(
             s,
@@ -139,10 +149,20 @@ export default function Profile() {
 
   const saveAccount = async () => {
     setSaving(true);
-    const values = Object.fromEntries(
-      Object.entries(account).map(([k, v]) => [`profile.${k}`, String(v)]),
-    );
     try {
+      // The real identity lives in the admin account (topbar/sidebar/login).
+      // Only touch it when name or email actually changed — a phone/bio-only
+      // edit must not rotate the JWT.
+      const prev = persistedIdentity.current;
+      if (!prev || prev.name !== account.name || prev.email !== account.email) {
+        await updateProfile(account.name, account.email);
+        persistedIdentity.current = { name: account.name, email: account.email };
+      }
+      // Phone + bio (and a mirror of name/email) live in the settings store,
+      // which is what this page reloads from on next visit.
+      const values = Object.fromEntries(
+        Object.entries(account).map(([k, v]) => [`profile.${k}`, String(v)]),
+      );
       await api.updateSettings(values);
       setNotice({ text: "تم حفظ بيانات الحساب بنجاح ✓", tone: "success" });
     } catch (e) {
@@ -232,47 +252,31 @@ export default function Profile() {
 
   if (error) {
     return (
-      <Card className="flex flex-col items-center px-6 py-20 text-center">
-        <div className="grid size-20 place-items-center rounded-3xl bg-red-50 text-red-500">
-          <Icon name="x" size={38} strokeWidth={1.6} />
-        </div>
-        <h3 className="mt-5 text-lg font-extrabold text-ink">
-          تعذر تحميل بيانات الحساب
-        </h3>
-        <p className="mt-1.5 max-w-sm text-sm text-ink-soft">{error}</p>
-        <Button
-          variant="outline"
-          className="mt-5"
-          onClick={() => window.location.reload()}
-        >
-          إعادة المحاولة
-        </Button>
-      </Card>
+      <PageState
+        mode="error"
+        title="تعذر تحميل بيانات الحساب"
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     );
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-primary">
-        <div className="flex items-center gap-3 text-sm font-bold">
-          <Icon name="loader" size={18} className="animate-spin" />
-          جاري تحميل الحساب الشخصي...
-        </div>
-      </div>
+      <PageState
+        mode="loading"
+        label="جاري تحميل الحساب الشخصي..."
+      />
     );
   }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header + tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-ink">الحساب الشخصي</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            إدارة بيانات حسابك وكلمة المرور وتفضيلات الإشعارات
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="الحساب الشخصي"
+        subtitle="إدارة بيانات حسابك وكلمة المرور وتفضيلات الإشعارات"
+      />
 
       <div className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-card p-1.5 shadow-card">
         {TABS.map((t) => (
@@ -292,31 +296,7 @@ export default function Profile() {
       </div>
 
       {/* Notice */}
-      {notice && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-bold animate-slide-in ${
-            notice.tone === "error"
-              ? "border-red-200 bg-red-50 text-red-600"
-              : "border-accent-soft/30 bg-mint text-primary"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Icon
-              name={notice.tone === "error" ? "x" : "check"}
-              size={16}
-              strokeWidth={2.4}
-            />
-            {notice.text}
-          </span>
-          <button
-            onClick={() => setNotice(null)}
-            aria-label="إغلاق"
-            className="grid size-6 place-items-center rounded-md transition-colors hover:bg-accent/30"
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
+      {notice && <Notice text={notice.text} tone={notice.tone} onDismiss={() => setNotice(null)} />}
 
       {/* Account tab */}
       {tab === "account" && (
@@ -410,12 +390,7 @@ export default function Profile() {
               subtitle="استخدم كلمة مرور قوية لا تقل عن 8 أحرف"
             />
             <div className="space-y-4 px-5 pb-5">
-              {passError && (
-                <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-slide-in">
-                  <Icon name="x" size={16} strokeWidth={2.4} />
-                  {passError}
-                </div>
-              )}
+              {passError && <FormError rounded="xl">{passError}</FormError>}
               <Input
                 label="كلمة المرور الحالية"
                 id="pw-current"
